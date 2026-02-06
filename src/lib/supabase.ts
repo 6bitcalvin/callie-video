@@ -1,7 +1,10 @@
 import { createClient } from '@supabase/supabase-js';
 
 const supabaseUrl = 'https://egbpxmcyljjezmazbgup.supabase.co';
-// Using the anon key for Supabase
+
+// IMPORTANT: You need to replace this with your actual anon key from Supabase Dashboard
+// Go to: https://supabase.com/dashboard -> Your Project -> Settings -> API -> anon public key
+// The key should start with "eyJ..."
 const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVnYnB4bWN5bGpqZXptYXpiZ3VwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDk1ODk2NDcsImV4cCI6MjA2NTE2NTY0N30.Lhs0gwMpa2vXBLit2PQNnWbpKFiox4W6aHOCHbzcVSc';
 
 export const supabase = createClient(supabaseUrl, supabaseKey, {
@@ -12,91 +15,36 @@ export const supabase = createClient(supabaseUrl, supabaseKey, {
   }
 });
 
-export type Database = {
-  public: {
-    Tables: {
-      users: {
-        Row: {
-          id: string;
-          username: string;
-          display_name: string;
-          avatar_url: string;
-          color_theme: string;
-          status: 'online' | 'offline' | 'busy' | 'away';
-          last_seen: string;
-          created_at: string;
-        };
-        Insert: {
-          id?: string;
-          username: string;
-          display_name: string;
-          avatar_url: string;
-          color_theme: string;
-          status?: 'online' | 'offline' | 'busy' | 'away';
-          last_seen?: string;
-          created_at?: string;
-        };
-        Update: {
-          id?: string;
-          username?: string;
-          display_name?: string;
-          avatar_url?: string;
-          color_theme?: string;
-          status?: 'online' | 'offline' | 'busy' | 'away';
-          last_seen?: string;
-        };
-      };
-      messages: {
-        Row: {
-          id: string;
-          sender_id: string;
-          receiver_id: string;
-          content: string;
-          message_type: 'text' | 'gif' | 'voice' | 'file' | 'emoji';
-          file_url: string | null;
-          created_at: string;
-          read: boolean;
-        };
-        Insert: {
-          id?: string;
-          sender_id: string;
-          receiver_id: string;
-          content: string;
-          message_type?: 'text' | 'gif' | 'voice' | 'file' | 'emoji';
-          file_url?: string | null;
-          created_at?: string;
-          read?: boolean;
-        };
-        Update: {
-          read?: boolean;
-        };
-      };
-      friendships: {
-        Row: {
-          id: string;
-          user_id: string;
-          friend_id: string;
-          status: 'pending' | 'accepted' | 'blocked';
-          created_at: string;
-        };
-        Insert: {
-          id?: string;
-          user_id: string;
-          friend_id: string;
-          status?: 'pending' | 'accepted' | 'blocked';
-          created_at?: string;
-        };
-        Update: {
-          status?: 'pending' | 'accepted' | 'blocked';
-        };
-      };
-    };
-  };
-};
+// Test connection function
+export async function testSupabaseConnection(): Promise<{ connected: boolean; error?: string }> {
+  try {
+    const channel = supabase.channel('test-connection');
+    
+    return new Promise((resolve) => {
+      const timeout = setTimeout(() => {
+        supabase.removeChannel(channel);
+        resolve({ connected: false, error: 'Connection timeout - check your API key' });
+      }, 5000);
 
-export type UserProfile = Database['public']['Tables']['users']['Row'];
-export type Message = Database['public']['Tables']['messages']['Row'];
-export type Friendship = Database['public']['Tables']['friendships']['Row'];
+      channel.subscribe((status) => {
+        clearTimeout(timeout);
+        supabase.removeChannel(channel);
+        
+        if (status === 'SUBSCRIBED') {
+          resolve({ connected: true });
+        } else if (status === 'CHANNEL_ERROR') {
+          resolve({ connected: false, error: 'Channel error - check your API key' });
+        } else if (status === 'TIMED_OUT') {
+          resolve({ connected: false, error: 'Connection timed out' });
+        } else {
+          resolve({ connected: true });
+        }
+      });
+    });
+  } catch (error) {
+    return { connected: false, error: String(error) };
+  }
+}
 
 export type SignalingMessage = {
   type: 'offer' | 'answer' | 'ice-candidate' | 'call-invite' | 'call-accept' | 'call-reject' | 'call-end' | 'call-busy';
@@ -107,7 +55,7 @@ export type SignalingMessage = {
   isVideo?: boolean;
   fromUser?: {
     displayName: string;
-    avatarUrl: string;
+    avatarColor: string;
     colorTheme: string;
   };
 };

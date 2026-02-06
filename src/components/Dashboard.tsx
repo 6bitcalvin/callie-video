@@ -53,6 +53,8 @@ export function Dashboard() {
     addFriend,
     copyUserIdToClipboard,
     playSound,
+    isConnected,
+    connectionError,
   } = useApp();
 
   const [activeTab, setActiveTab] = useState<Tab>('friends');
@@ -83,7 +85,7 @@ export function Dashboard() {
     id: incomingCall.from,
     username: incomingCall.fromUser.displayName.toLowerCase().replace(/\s/g, '_'),
     displayName: incomingCall.fromUser.displayName,
-    avatarColor: incomingCall.fromUser.colorTheme || stringToColor(incomingCall.from),
+    avatarColor: incomingCall.fromUser.avatarColor || stringToColor(incomingCall.from),
     colorTheme: colorThemes.find(t => t.gradient === incomingCall.fromUser.colorTheme) || colorThemes[0],
     status: 'online',
     lastSeen: new Date(),
@@ -111,23 +113,15 @@ export function Dashboard() {
   };
 
   const handleAddFriend = async () => {
-    if (!friendIdInput.trim()) {
-      setAddFriendError('Please enter a user ID');
-      return;
-    }
-    if (friendIdInput === user?.id) {
-      setAddFriendError("You can't add yourself as a friend");
-      return;
-    }
-    if (friends.some(f => f.id === friendIdInput)) {
-      setAddFriendError('This user is already your friend');
-      return;
-    }
+    const result = await addFriend(friendIdInput);
     
-    await addFriend(friendIdInput.trim());
-    setFriendIdInput('');
-    setShowAddFriend(false);
-    setAddFriendError('');
+    if (result.success) {
+      setFriendIdInput('');
+      setShowAddFriend(false);
+      setAddFriendError('');
+    } else {
+      setAddFriendError(result.error || 'Failed to add friend');
+    }
   };
 
   const handleLogout = () => {
@@ -366,11 +360,30 @@ export function Dashboard() {
           >
             <div className="flex items-center justify-between">
               <div>
-                <h1 className="text-2xl font-bold text-white">
-                  {activeTab === 'friends' && 'Friends'}
-                  {activeTab === 'messages' && 'Messages'}
-                  {activeTab === 'calls' && 'Recent Calls'}
-                </h1>
+                <div className="flex items-center gap-2">
+                  <h1 className="text-2xl font-bold text-white">
+                    {activeTab === 'friends' && 'Friends'}
+                    {activeTab === 'messages' && 'Messages'}
+                    {activeTab === 'calls' && 'Recent Calls'}
+                  </h1>
+                  {/* Connection Status */}
+                  <div className="flex items-center gap-1.5">
+                    <motion.div
+                      className={`w-2 h-2 rounded-full ${isConnected ? 'bg-green-500' : 'bg-red-500'}`}
+                      animate={isConnected ? {
+                        scale: [1, 1.2, 1],
+                        boxShadow: ['0 0 0 0 rgba(34, 197, 94, 0.4)', '0 0 0 4px rgba(34, 197, 94, 0)'],
+                      } : {}}
+                      transition={{ duration: 1.5, repeat: Infinity }}
+                    />
+                    <span className={`text-xs ${isConnected ? 'text-green-400' : 'text-red-400'}`}>
+                      {isConnected ? 'Connected' : 'Disconnected'}
+                    </span>
+                  </div>
+                </div>
+                {connectionError && (
+                  <p className="text-red-400 text-xs mt-1">{connectionError}</p>
+                )}
                 <p className="text-white/50 text-sm mt-1">
                   {activeTab === 'friends' && `${onlineFriends.length} online, ${offlineFriends.length} offline`}
                   {activeTab === 'messages' && 'Your conversations'}

@@ -1,11 +1,15 @@
 import { createContext, useContext, useState, useEffect, useCallback, ReactNode, useRef } from 'react';
-import { supabase } from '@/lib/supabase';
+import { supabase, testSupabaseConnection } from '@/lib/supabase';
 import { colorThemes, Friend, Message, Reaction, User } from '@/types';
 import { v4 as uuidv4 } from 'uuid';
 import { useWebRTC } from '@/hooks/useWebRTC';
 import { stringToColor } from '@/components/ColorAvatar';
 
 type AppContextType = {
+  // Connection state
+  isConnected: boolean;
+  connectionError: string | null;
+  
   // User state
   user: User | null;
   setUser: (user: User | null) => void;
@@ -14,7 +18,7 @@ type AppContextType = {
   
   // Friends
   friends: Friend[];
-  addFriend: (friendId: string) => Promise<void>;
+  addFriend: (friendId: string) => Promise<{ success: boolean; error?: string }>;
   removeFriend: (friendId: string) => Promise<void>;
   onlineUsers: Set<string>;
   
@@ -35,7 +39,7 @@ type AppContextType = {
   isCameraOff: boolean;
   isScreenSharing: boolean;
   isVideoCall: boolean;
-  incomingCall: { from: string; roomId: string; isVideo: boolean; fromUser: { displayName: string; avatarUrl: string; colorTheme: string } } | null;
+  incomingCall: { from: string; roomId: string; isVideo: boolean; fromUser: { displayName: string; avatarColor: string; colorTheme: string } } | null;
   initiateCall: (targetUserIds: string[], video: boolean) => Promise<void>;
   acceptCall: () => Promise<void>;
   rejectCall: () => Promise<void>;
@@ -68,10 +72,18 @@ const STORAGE_KEYS = {
 };
 
 export function AppProvider({ children }: { children: ReactNode }) {
+  // Connection state
+  const [isConnected, setIsConnected] = useState(false);
+  const [connectionError, setConnectionError] = useState<string | null>(null);
+
   // Load initial state from localStorage
   const [user, setUserState] = useState<User | null>(() => {
-    const stored = localStorage.getItem(STORAGE_KEYS.USER);
-    return stored ? JSON.parse(stored) : null;
+    try {
+      const stored = localStorage.getItem(STORAGE_KEYS.USER);
+      return stored ? JSON.parse(stored) : null;
+    } catch {
+      return null;
+    }
   });
   
   const [isOnboarded, setIsOnboardedState] = useState(() => {
@@ -79,14 +91,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
   });
 
   const [friends, setFriends] = useState<Friend[]>(() => {
-    const stored = localStorage.getItem(STORAGE_KEYS.FRIENDS);
-    if (stored) {
-      const parsed = JSON.parse(stored);
-      // Convert date strings back to Date objects
-      return parsed.map((f: Friend) => ({
-        ...f,
-        lastSeen: new Date(f.lastSeen),
-      }));
+    try {
+      const stored = localStorage.getItem(STORAGE_KEYS.FRIENDS);
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        return parsed.map((f: Friend) => ({
+          ...f,
+          lastSeen: new Date(f.lastSeen),
+        }));
+      }
+    } catch {
+      // Ignore parse errors
     }
     return [];
   });
@@ -108,10 +123,23 @@ export function AppProvider({ children }: { children: ReactNode }) {
     user?.id || '',
     user ? {
       displayName: user.displayName,
-      avatarUrl: user.avatarColor, // Use color as identifier
+      avatarColor: user.avatarColor,
       colorTheme: user.colorTheme.gradient,
     } : undefined
   );
+
+  // Test connection on mount
+  useEffect(() => {
+    testSupabaseConnection().then((result) => {
+      setIsConnected(result.connected);
+      if (!result.connected) {
+        setConnectionError(result.error || 'Failed to connect to server');
+        console.error('Supabase connection failed:', result.error);
+      } else {
+        console.log('Supabase connected successfully');
+      }
+    });
+  }, []);
 
   // Persist user to localStorage
   const setUser = useCallback((newUser: User | null) => {
@@ -179,8 +207,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
           oscillator.stop(audioContext.currentTime + 0.3);
           break;
       }
-    } catch (e) {
-      console.log('Audio not supported');
+    } catch {
+      // Audio not supported
     }
   }, []);
 
@@ -193,29 +221,49 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, [user, playSound]);
 
   // Add friend by ID
-  const addFriend = useCallback(async (friendId: string) => {
-    if (!user || friendId === user.id) return;
+  const addFriend = useCallback(async (friendId: string): Promise<{ success: boolean; error?: string }> => {
+    if (!user) {
+      return { success: false, error: 'You must be logged in to add friends' };
+    }
+    
+    if (!friendId || friendId.trim() === '') {
+      return { success: false, error: 'Please enter a valid user ID' };
+    }
+
+    const trimmedId = friendId.trim();
+
+    if (trimmedId === user.id) {
+      return { success: false, error: "You can't add yourself as a friend" };
+    }
 
     // Check if already a friend
-    if (friends.some(f => f.id === friendId)) {
-      return;
+    if (friends.some(f => f.id === trimmedId)) {
+      return { success: false, error: 'This user is already your friend' };
+    }
+
+    // Validate UUID format (basic check)
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!uuidRegex.test(trimmedId)) {
+      return { success: false, error: 'Invalid user ID format. Please paste the complete ID.' };
     }
 
     // Create a friend with a generated color based on their ID
     const randomTheme = colorThemes[Math.floor(Math.random() * colorThemes.length)];
     const newFriend: Friend = {
-      id: friendId,
-      username: `user_${friendId.slice(0, 8)}`,
-      displayName: `User ${friendId.slice(0, 8)}`,
-      avatarColor: stringToColor(friendId),
+      id: trimmedId,
+      username: `user_${trimmedId.slice(0, 8)}`,
+      displayName: `User ${trimmedId.slice(0, 8)}`,
+      avatarColor: stringToColor(trimmedId),
       colorTheme: randomTheme,
-      status: onlineUsers.has(friendId) ? 'online' : 'offline',
+      status: onlineUsers.has(trimmedId) ? 'online' : 'offline',
       lastSeen: new Date(),
       unreadCount: 0,
     };
 
     setFriends(prev => [...prev, newFriend]);
     playSound('pop');
+    
+    return { success: true };
   }, [user, friends, onlineUsers, playSound]);
 
   // Remove friend
@@ -246,14 +294,18 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
     // Broadcast message to the chat channel
     if (chatChannelRef.current) {
-      chatChannelRef.current.send({
-        type: 'broadcast',
-        event: 'message',
-        payload: {
-          ...newMessage,
-          createdAt: newMessage.createdAt.toISOString(),
-        },
-      });
+      try {
+        await chatChannelRef.current.send({
+          type: 'broadcast',
+          event: 'message',
+          payload: {
+            ...newMessage,
+            createdAt: newMessage.createdAt.toISOString(),
+          },
+        });
+      } catch (error) {
+        console.error('Failed to send message:', error);
+      }
     }
   }, [user, activeChat, playSound]);
 
@@ -346,6 +398,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
           online_at: new Date().toISOString(),
           user_id: user.id,
         });
+        setIsConnected(true);
+      } else if (status === 'CHANNEL_ERROR') {
+        setIsConnected(false);
+        setConnectionError('Failed to connect to presence channel');
       }
     });
 
@@ -407,6 +463,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
   return (
     <AppContext.Provider
       value={{
+        // Connection
+        isConnected,
+        connectionError,
+        
         // User
         user,
         setUser,

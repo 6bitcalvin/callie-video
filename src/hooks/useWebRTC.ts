@@ -20,12 +20,12 @@ type IncomingCallData = {
   isVideo: boolean;
   fromUser: {
     displayName: string;
-    avatarUrl: string;
+    avatarColor: string;
     colorTheme: string;
   };
 };
 
-export function useWebRTC(userId: string, userInfo?: { displayName: string; avatarUrl: string; colorTheme: string }) {
+export function useWebRTC(userId: string, userInfo?: { displayName: string; avatarColor: string; colorTheme: string }) {
   const [callState, setCallState] = useState<CallState>('idle');
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
   const [remoteStreams, setRemoteStreams] = useState<Map<string, MediaStream>>(new Map());
@@ -577,7 +577,7 @@ export function useWebRTC(userId: string, userInfo?: { displayName: string; avat
           isVideo: signal.isVideo ?? true,
           fromUser: signal.fromUser || {
             displayName: 'Unknown',
-            avatarUrl: '',
+            avatarColor: '#8B5CF6',
             colorTheme: 'from-purple-500 to-pink-500',
           },
         });
