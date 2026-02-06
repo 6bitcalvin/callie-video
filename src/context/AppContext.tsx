@@ -1,6 +1,6 @@
 import { createContext, useContext, useState, useEffect, useCallback, ReactNode, useRef } from 'react';
 import { supabase, testRealtimeConnection } from '@/lib/supabase';
-import { colorThemes, Friend, Message, Reaction, User, UserProfile } from '@/types';
+import { colorThemes, ColorTheme, Friend, Message, Reaction, User, UserProfile } from '@/types';
 import { v4 as uuidv4 } from 'uuid';
 import { useWebRTC } from '@/hooks/useWebRTC';
 import { stringToColor } from '@/components/ColorAvatar';
@@ -319,7 +319,7 @@ export function AppProvider({ children, userProfile }: AppProviderProps) {
     chatChannelRef.current.send({
       type: 'broadcast',
       event: 'typing',
-      payload: { userId: user.id },
+      payload: { odisplayName: user.id },
     });
 
     // Clear typing after 3 seconds of no activity
@@ -341,17 +341,29 @@ export function AppProvider({ children, userProfile }: AppProviderProps) {
       config: { presence: { key: user.id } }
     });
 
+    // Type for presence data
+    type PresenceData = {
+      odisplayName?: string;
+      username?: string;
+      displayName?: string;
+      avatarColor?: string;
+      colorTheme?: ColorTheme;
+    };
+
     channel.on('presence', { event: 'sync' }, () => {
       const state = channel.presenceState();
       const online = new Set<string>();
-      const userProfiles: Record<string, { username?: string; displayName?: string; avatarColor?: string }> = {};
+      const userProfiles: Record<string, PresenceData> = {};
       
-      Object.entries(state).forEach(([key, presences]) => {
-        online.add(key);
-        // Get the user profile data from presence
-        if (presences && presences.length > 0) {
-          const presence = presences[0] as { username?: string; displayName?: string; avatarColor?: string };
-          userProfiles[key] = presence;
+      // Presence state structure: { "presence_key": [{ ...userData }] }
+      Object.entries(state).forEach(([presenceKey, presences]) => {
+        if (presences && Array.isArray(presences) && presences.length > 0) {
+          const presenceData = presences[0] as PresenceData;
+          // The presence key IS the user id (we set it that way in config)
+          const odisplayName = presenceKey;
+          online.add(odisplayName);
+          userProfiles[odisplayName] = presenceData;
+          console.log(`Presence data for ${odisplayName}:`, presenceData);
         }
       });
       
@@ -362,39 +374,60 @@ export function AppProvider({ children, userProfile }: AppProviderProps) {
       // Update friends' online status AND their profile data if we have it
       setFriends(prev => prev.map(friend => {
         const profile = userProfiles[friend.id];
+        const isOnline = online.has(friend.id);
+        
+        // Only update profile data if we actually got data from presence
+        if (profile && (profile.username || profile.displayName)) {
+          console.log(`Updating friend ${friend.id} with profile:`, profile);
+          return {
+            ...friend,
+            username: profile.username || friend.username,
+            displayName: profile.displayName || friend.displayName,
+            avatarColor: profile.avatarColor || friend.avatarColor,
+            colorTheme: profile.colorTheme || friend.colorTheme,
+            status: isOnline ? 'online' : 'offline',
+            lastSeen: isOnline ? new Date() : friend.lastSeen,
+          };
+        }
+        
         return {
           ...friend,
-          // Update profile info if available from presence
-          username: profile?.username || friend.username,
-          displayName: profile?.displayName || friend.displayName,
-          avatarColor: profile?.avatarColor || friend.avatarColor,
-          status: online.has(friend.id) ? 'online' : 'offline',
-          lastSeen: online.has(friend.id) ? new Date() : friend.lastSeen,
+          status: isOnline ? 'online' : 'offline',
+          lastSeen: isOnline ? new Date() : friend.lastSeen,
         };
       }));
     });
 
     channel.on('presence', { event: 'join' }, ({ key, newPresences }) => {
-      console.log('User joined:', key, newPresences);
+      console.log('User joined with key:', key);
+      console.log('New presences data:', newPresences);
+      
       setOnlineUsers(prev => new Set(prev).add(key));
       
       // Get profile data from the joining user
-      const profile = newPresences?.[0] as { username?: string; displayName?: string; avatarColor?: string } | undefined;
-      
-      setFriends(prev => prev.map(friend => {
-        if (friend.id === key) {
-          return {
-            ...friend,
-            // Update profile if available
-            username: profile?.username || friend.username,
-            displayName: profile?.displayName || friend.displayName,
-            avatarColor: profile?.avatarColor || friend.avatarColor,
-            status: 'online',
-            lastSeen: new Date(),
-          };
-        }
-        return friend;
-      }));
+      if (newPresences && Array.isArray(newPresences) && newPresences.length > 0) {
+        const profile = newPresences[0] as PresenceData;
+        console.log('Join event profile data:', profile);
+        
+        setFriends(prev => prev.map(friend => {
+          if (friend.id === key && (profile.username || profile.displayName)) {
+            console.log(`Updating friend ${friend.id} on join:`, profile);
+            return {
+              ...friend,
+              username: profile.username || friend.username,
+              displayName: profile.displayName || friend.displayName,
+              avatarColor: profile.avatarColor || friend.avatarColor,
+              colorTheme: profile.colorTheme || friend.colorTheme,
+              status: 'online' as const,
+              lastSeen: new Date(),
+            };
+          }
+          if (friend.id === key) {
+            return { ...friend, status: 'online' as const, lastSeen: new Date() };
+          }
+          return friend;
+        }));
+      }
     });
 
     channel.on('presence', { event: 'leave' }, ({ key }) => {
@@ -405,7 +438,7 @@ export function AppProvider({ children, userProfile }: AppProviderProps) {
         return next;
       });
       setFriends(prev => prev.map(friend =>
-        friend.id === key ? { ...friend, status: 'offline', lastSeen: new Date() } : friend
+        friend.id === key ? { ...friend, status: 'offline' as const, lastSeen: new Date() } : friend
       ));
     });
 
@@ -414,13 +447,16 @@ export function AppProvider({ children, userProfile }: AppProviderProps) {
       if (status === 'SUBSCRIBED') {
         try {
           // Track presence with FULL user profile data so other users can see it
-          await channel.track({
-            online_at: new Date().toISOString(),
-            user_id: user.id,
+          const trackData = {
+            odisplayName: user.id,
             username: user.username,
             displayName: user.displayName,
             avatarColor: user.avatarColor,
-          });
+            colorTheme: user.colorTheme,
+            online_at: new Date().toISOString(),
+          };
+          console.log('Tracking presence with data:', trackData);
+          await channel.track(trackData);
           console.log('Presence tracking started with profile data');
         } catch (err) {
           console.error('Failed to track presence:', err);
@@ -440,7 +476,7 @@ export function AppProvider({ children, userProfile }: AppProviderProps) {
       console.log('Cleaning up presence channel');
       supabase.removeChannel(channel);
     };
-  }, [user.id, isConnected]);
+  }, [user.id, user.username, user.displayName, user.avatarColor, user.colorTheme, isConnected]);
 
   // Setup chat channel when active chat changes
   useEffect(() => {
@@ -472,7 +508,7 @@ export function AppProvider({ children, userProfile }: AppProviderProps) {
     });
 
     channel.on('broadcast', { event: 'typing' }, ({ payload }) => {
-      if (payload.userId !== user.id) {
+      if (payload.odisplayName !== user.id) {
         setFriendTyping(true);
         setTimeout(() => setFriendTyping(false), 3000);
       }
