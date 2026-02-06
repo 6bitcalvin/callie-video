@@ -455,34 +455,42 @@ export function useWebRTC(myUserId: string, myUserInfo?: UserInfo) {
 
     setupCallChannel(roomId);
 
+    // Send call invites to all targets using THEIR user-calls channel
     for (const targetId of targetUserIds) {
-      console.log('Sending call invite to:', targetId);
+      console.log('Sending call invite to:', targetId, 'on channel: user-calls:' + targetId);
       
-      const inviteChannel = supabase.channel('user-calls:' + targetId + ':' + Date.now(), {
+      // IMPORTANT: Use the SAME channel name that the recipient is listening on
+      const inviteChannel = supabase.channel('user-calls:' + targetId, {
         config: { broadcast: { self: false } }
       });
 
       inviteChannel.subscribe(async (status) => {
+        console.log('Invite channel for', targetId, 'status:', status);
         if (status === 'SUBSCRIBED') {
-          console.log('Invite channel subscribed, sending invite to:', targetId);
+          console.log('Sending call-invite to:', targetId);
           
-          await inviteChannel.send({
-            type: 'broadcast',
-            event: 'call-invite',
-            payload: {
-              type: 'call-invite',
-              from: myUserId,
-              to: targetId,
-              roomId,
-              isVideo: video,
-              participants: allParticipants,
-              fromUser: myUserInfo,
-            } as SignalingMessage,
-          });
+          // Send multiple times to ensure delivery
+          for (let i = 0; i < 3; i++) {
+            await inviteChannel.send({
+              type: 'broadcast',
+              event: 'call-invite',
+              payload: {
+                type: 'call-invite',
+                from: myUserId,
+                to: targetId,
+                roomId,
+                isVideo: video,
+                participants: allParticipants,
+                fromUser: myUserInfo,
+              } as SignalingMessage,
+            });
+            await new Promise(r => setTimeout(r, 300));
+          }
           
+          // Keep channel open longer to ensure message delivery
           setTimeout(() => {
             supabase.removeChannel(inviteChannel);
-          }, 3000);
+          }, 5000);
         }
       });
     }
@@ -651,65 +659,113 @@ export function useWebRTC(myUserId: string, myUserInfo?: UserInfo) {
     }
   }, [isScreenSharing, isVideoCall, initializeMedia]);
 
+  // Set up incoming call listener - this runs once when myUserId is set
   useEffect(() => {
-    if (!myUserId) return;
+    if (!myUserId) {
+      console.log('No user ID, skipping call listener setup');
+      return;
+    }
 
-    console.log('Setting up incoming call listener for user:', myUserId);
+    console.log('=== Setting up incoming call listener for user:', myUserId, '===');
+    console.log('Listening on channel: user-calls:' + myUserId);
+    
+    // Track if we've already processed a call invite (prevent duplicates)
+    const processedRoomIds = new Set<string>();
     
     const channel = supabase.channel('user-calls:' + myUserId, {
-      config: { broadcast: { self: false } }
-    });
-
-    channel.on('broadcast', { event: 'call-invite' }, ({ payload }) => {
-      const signal = payload as SignalingMessage;
-      console.log('INCOMING CALL:', signal);
-      
-      if (signal.type === 'call-invite' && signal.to === myUserId) {
-        if (callStateRef.current !== 'idle') {
-          console.log('Already in call, sending busy signal');
-          
-          const busyChannel = supabase.channel('call:' + signal.roomId, {
-            config: { broadcast: { self: false } }
-          });
-          
-          busyChannel.subscribe(async (status) => {
-            if (status === 'SUBSCRIBED') {
-              await busyChannel.send({
-                type: 'broadcast',
-                event: 'signal',
-                payload: {
-                  type: 'call-busy',
-                  from: myUserId,
-                  to: signal.from,
-                  roomId: signal.roomId,
-                } as SignalingMessage,
-              });
-              
-              setTimeout(() => {
-                supabase.removeChannel(busyChannel);
-              }, 1000);
-            }
-          });
-          return;
-        }
-
-        console.log('Setting incoming call state');
-        setIncomingCall({
-          from: signal.from,
-          roomId: signal.roomId,
-          isVideo: signal.isVideo ?? true,
-          participants: signal.participants || [signal.from, myUserId],
-          fromUser: signal.fromUser || {
-            displayName: 'Unknown Caller',
-            avatarColor: '#8B5CF6',
-            colorTheme: 'from-purple-500 to-pink-500',
-          },
-        });
+      config: { 
+        broadcast: { self: false },
+        presence: { key: myUserId }
       }
     });
 
+    channel.on('broadcast', { event: 'call-invite' }, ({ payload }) => {
+      console.log('=== RECEIVED BROADCAST ON CALL CHANNEL ===');
+      console.log('Payload:', JSON.stringify(payload, null, 2));
+      
+      const signal = payload as SignalingMessage;
+      
+      // Check if this invite is for us
+      if (signal.type !== 'call-invite') {
+        console.log('Not a call-invite, ignoring');
+        return;
+      }
+      
+      if (signal.to !== myUserId) {
+        console.log('Call invite not for me, ignoring. to:', signal.to, 'me:', myUserId);
+        return;
+      }
+      
+      // Prevent duplicate processing
+      if (processedRoomIds.has(signal.roomId)) {
+        console.log('Already processed this call invite, ignoring duplicate');
+        return;
+      }
+      processedRoomIds.add(signal.roomId);
+      
+      // Clear old room IDs after 30 seconds
+      setTimeout(() => {
+        processedRoomIds.delete(signal.roomId);
+      }, 30000);
+      
+      console.log('=== INCOMING CALL from:', signal.from, '===');
+      
+      if (callStateRef.current !== 'idle') {
+        console.log('Already in call, sending busy signal');
+        
+        const busyChannel = supabase.channel('call:' + signal.roomId, {
+          config: { broadcast: { self: false } }
+        });
+        
+        busyChannel.subscribe(async (status) => {
+          if (status === 'SUBSCRIBED') {
+            await busyChannel.send({
+              type: 'broadcast',
+              event: 'signal',
+              payload: {
+                type: 'call-busy',
+                from: myUserId,
+                to: signal.from,
+                roomId: signal.roomId,
+              } as SignalingMessage,
+            });
+            
+            setTimeout(() => {
+              supabase.removeChannel(busyChannel);
+            }, 1000);
+          }
+        });
+        return;
+      }
+
+      console.log('Setting incoming call state with data:', {
+        from: signal.from,
+        roomId: signal.roomId,
+        isVideo: signal.isVideo,
+        participants: signal.participants,
+        fromUser: signal.fromUser,
+      });
+      
+      setIncomingCall({
+        from: signal.from,
+        roomId: signal.roomId,
+        isVideo: signal.isVideo ?? true,
+        participants: signal.participants || [signal.from, myUserId],
+        fromUser: signal.fromUser || {
+          displayName: 'Unknown Caller',
+          avatarColor: '#8B5CF6',
+          colorTheme: 'from-purple-500 to-pink-500',
+        },
+      });
+    });
+
     channel.subscribe((status) => {
-      console.log('User calls channel status:', status);
+      console.log('=== User calls channel status:', status, '===');
+      if (status === 'SUBSCRIBED') {
+        console.log('✅ Successfully listening for incoming calls on: user-calls:' + myUserId);
+      } else if (status === 'CHANNEL_ERROR') {
+        console.error('❌ Failed to subscribe to calls channel');
+      }
     });
 
     return () => {

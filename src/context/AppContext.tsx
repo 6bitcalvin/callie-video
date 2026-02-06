@@ -319,7 +319,7 @@ export function AppProvider({ children, userProfile }: AppProviderProps) {
     chatChannelRef.current.send({
       type: 'broadcast',
       event: 'typing',
-      payload: { odis_playName: user.id },
+      payload: { oduserId: user.id },
     });
 
     // Clear typing after 3 seconds of no activity
@@ -343,7 +343,7 @@ export function AppProvider({ children, userProfile }: AppProviderProps) {
 
     // Type for presence data
     type PresenceData = {
-      odis_playName?: string;
+      oduserId?: string;
       username?: string;
       displayName?: string;
       avatarColor?: string;
@@ -360,10 +360,10 @@ export function AppProvider({ children, userProfile }: AppProviderProps) {
         if (presences && Array.isArray(presences) && presences.length > 0) {
           const presenceData = presences[0] as PresenceData;
           // The presence key IS the user id (we set it that way in config)
-          const odis_playName = presenceKey;
-          online.add(odis_playName);
-          userProfiles[odis_playName] = presenceData;
-          console.log('Presence data for ' + odis_playName + ':', presenceData);
+          const oduserId = presenceKey;
+          online.add(oduserId);
+          userProfiles[oduserId] = presenceData;
+          console.log('Presence data for ' + oduserId + ':', presenceData);
         }
       });
       
@@ -448,7 +448,7 @@ export function AppProvider({ children, userProfile }: AppProviderProps) {
         try {
           // Track presence with FULL user profile data so other users can see it
           const trackData = {
-            odis_playName: user.id,
+            oduserId: user.id,
             username: user.username,
             displayName: user.displayName,
             avatarColor: user.avatarColor,
@@ -508,7 +508,7 @@ export function AppProvider({ children, userProfile }: AppProviderProps) {
     });
 
     channel.on('broadcast', { event: 'typing' }, ({ payload }) => {
-      if (payload.odis_playName !== user.id) {
+      if (payload.oduserId !== user.id) {
         setFriendTyping(true);
         setTimeout(() => setFriendTyping(false), 3000);
       }
