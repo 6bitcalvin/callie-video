@@ -5,7 +5,7 @@ const supabaseUrl = 'https://egbpxmcyljjezmazbgup.supabase.co';
 // IMPORTANT: You need to replace this with your actual anon key from Supabase Dashboard
 // Go to: https://supabase.com/dashboard -> Your Project -> Settings -> API -> anon public key
 // The key should start with "eyJ..."
-const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVnYnB4bWN5bGpqZXptYXpiZ3VwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDk1ODk2NDcsImV4cCI6MjA2NTE2NTY0N30.Lhs0gwMpa2vXBLit2PQNnWbpKFiox4W6aHOCHbzcVSc';
+const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVnYnB4bWN5bGpqZXptYXpiZ3VwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzAzMzc2NzcsImV4cCI6MjA4NTkxMzY3N30.9iH81-H8nlgS-YGz76Bs2Unhv93pQuLR6b2qrWEKa_w';
 
 export const supabase = createClient(supabaseUrl, supabaseKey, {
   realtime: {
