@@ -9,4 +9,4 @@ export { EmojiReaction } from './EmojiReaction';
 export { StatusIndicator } from './StatusIndicator';
 export { GlassCard } from './GlassCard';
 export { AnimatedButton } from './AnimatedButton';
-export { Avatar } from './Avatar';
+export { ColorAvatar } from './ColorAvatar';

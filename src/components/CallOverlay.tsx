@@ -18,6 +18,7 @@ import {
 import { cn } from '@/utils/cn';
 import { Friend, Reaction } from '@/types';
 import { useApp } from '@/context/AppContext';
+import { ColorAvatar } from './ColorAvatar';
 
 type CallOverlayProps = {
   participants: Friend[];
@@ -81,17 +82,14 @@ function VideoTile({
 
       {isCameraOff || !stream ? (
         <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-800">
-          <motion.div
-            className={`w-24 h-24 rounded-full bg-gradient-to-r ${participant.colorTheme.gradient} p-1`}
-            animate={{ scale: [1, 1.05, 1] }}
-            transition={{ duration: 2, repeat: Infinity }}
-          >
-            <img
-              src={participant.avatarUrl}
-              alt={participant.displayName}
-              className="w-full h-full rounded-full bg-white"
-            />
-          </motion.div>
+          <ColorAvatar
+            name={participant.displayName}
+            color={participant.avatarColor}
+            size="xl"
+            showBorder
+            borderGradient={participant.colorTheme.gradient}
+            animate
+          />
           <p className="text-white font-medium mt-4">{isLocal ? 'You' : participant.displayName}</p>
           {isCameraOff && (
             <p className="text-white/50 text-sm mt-1">Camera off</p>
@@ -196,7 +194,7 @@ export function CallOverlay({
     id: user.id,
     username: user.username,
     displayName: user.displayName,
-    avatarUrl: user.avatarUrl,
+    avatarColor: user.avatarColor,
     colorTheme: user.colorTheme,
     status: 'online',
     lastSeen: new Date(),
@@ -232,7 +230,6 @@ export function CallOverlay({
             exit={{ opacity: 0 }}
           >
             <motion.div
-              className={`w-40 h-40 rounded-full bg-gradient-to-r ${participants[0]?.colorTheme.gradient || 'from-purple-500 to-pink-500'} p-1`}
               animate={{
                 scale: [1, 1.1, 1],
                 boxShadow: [
@@ -242,10 +239,12 @@ export function CallOverlay({
               }}
               transition={{ duration: 1.5, repeat: Infinity }}
             >
-              <img
-                src={participants[0]?.avatarUrl}
-                alt="Calling"
-                className="w-full h-full rounded-full bg-white"
+              <ColorAvatar
+                name={participants[0]?.displayName || 'Unknown'}
+                color={participants[0]?.avatarColor || '#8B5CF6'}
+                size="2xl"
+                showBorder
+                borderGradient={participants[0]?.colorTheme.gradient || 'from-purple-500 to-pink-500'}
               />
             </motion.div>
             <motion.h2
@@ -279,17 +278,16 @@ export function CallOverlay({
                   transition={{ duration: 2, repeat: Infinity, delay: i * 0.4 }}
                 />
               ))}
-              <motion.div
-                className={`absolute inset-8 rounded-full bg-gradient-to-r ${participants[0]?.colorTheme.gradient || 'from-purple-500 to-pink-500'} p-1`}
-                animate={{ scale: [1, 1.05, 1] }}
-                transition={{ duration: 1.5, repeat: Infinity }}
-              >
-                <img
-                  src={participants[0]?.avatarUrl}
-                  alt="Connecting"
-                  className="w-full h-full rounded-full bg-white"
+              <div className="absolute inset-8">
+                <ColorAvatar
+                  name={participants[0]?.displayName || 'Unknown'}
+                  color={participants[0]?.avatarColor || '#8B5CF6'}
+                  size="2xl"
+                  showBorder
+                  borderGradient={participants[0]?.colorTheme.gradient || 'from-purple-500 to-pink-500'}
+                  animate
                 />
-              </motion.div>
+              </div>
             </div>
             <motion.h2
               className="text-white text-xl font-bold mt-8"
@@ -354,12 +352,13 @@ export function CallOverlay({
           </div>
           <div className="flex -space-x-2">
             {participants.slice(0, 3).map((p) => (
-              <img
+              <div
                 key={p.id}
-                src={p.avatarUrl}
-                alt={p.displayName}
-                className="w-8 h-8 rounded-full border-2 border-slate-900"
-              />
+                className="w-8 h-8 rounded-full border-2 border-slate-900 flex items-center justify-center text-white text-xs font-bold"
+                style={{ backgroundColor: p.avatarColor }}
+              >
+                {p.displayName.substring(0, 1).toUpperCase()}
+              </div>
             ))}
             {participants.length > 3 && (
               <div className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center text-white text-xs font-bold border-2 border-slate-900">

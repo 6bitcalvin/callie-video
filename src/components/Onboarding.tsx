@@ -5,10 +5,11 @@ import { cn } from '@/utils/cn';
 import { colorThemes, ColorTheme } from '@/types';
 import { useApp } from '@/context/AppContext';
 import { v4 as uuidv4 } from 'uuid';
+import { ColorAvatar } from './ColorAvatar';
 
-const avatarPresets = [
-  'adventurer', 'avataaars', 'big-ears', 'bottts', 'croodles', 'fun-emoji',
-  'lorelei', 'micah', 'miniavs', 'open-peeps', 'personas', 'pixel-art',
+const avatarColors = [
+  '#8B5CF6', '#EC4899', '#06B6D4', '#10B981', '#F59E0B', '#EF4444',
+  '#3B82F6', '#6366F1', '#14B8A6', '#F97316', '#84CC16', '#A855F7',
 ];
 
 export function Onboarding() {
@@ -17,20 +18,16 @@ export function Onboarding() {
   const [username, setUsername] = useState('');
   const [displayName, setDisplayName] = useState('');
   const [selectedTheme, setSelectedTheme] = useState<ColorTheme>(colorThemes[0]);
-  const [selectedAvatarStyle, setSelectedAvatarStyle] = useState('avataaars');
-  const [avatarSeed, setAvatarSeed] = useState('callie-user-' + Date.now());
+  const [selectedColor, setSelectedColor] = useState(avatarColors[0]);
   const [copied, setCopied] = useState(false);
   const [generatedId] = useState(uuidv4());
-
-  const getAvatarUrl = (style: string, seed: string) =>
-    `https://api.dicebear.com/7.x/${style}/svg?seed=${seed}&backgroundColor=b6e3f4,c0aede,d1d4f9,ffd5dc,ffdfbf`;
 
   const handleComplete = () => {
     setUser({
       id: generatedId,
       username,
       displayName: displayName || username,
-      avatarUrl: getAvatarUrl(selectedAvatarStyle, avatarSeed),
+      avatarColor: selectedColor,
       colorTheme: selectedTheme,
       status: 'online',
     });
@@ -59,8 +56,8 @@ export function Onboarding() {
       subtitle: 'Select a color theme that matches your energy',
     },
     {
-      title: 'Design Your Avatar',
-      subtitle: 'Express yourself with a unique look',
+      title: 'Pick Your Color',
+      subtitle: 'Choose a color for your avatar',
     },
     {
       title: 'Your Unique ID',
@@ -291,55 +288,60 @@ export function Onboarding() {
                   className="space-y-6"
                 >
                   {/* Avatar Preview */}
-                  <motion.div
-                    className={`w-32 h-32 mx-auto rounded-full bg-gradient-to-r ${selectedTheme.gradient} p-1`}
-                    animate={{ scale: [1, 1.05, 1] }}
-                    transition={{ duration: 2, repeat: Infinity }}
-                  >
-                    <img
-                      src={getAvatarUrl(selectedAvatarStyle, avatarSeed)}
-                      alt="Avatar"
-                      className="w-full h-full rounded-full bg-white"
+                  <div className="flex justify-center">
+                    <ColorAvatar
+                      name={displayName || username || 'You'}
+                      color={selectedColor}
+                      size="2xl"
+                      showBorder
+                      borderGradient={selectedTheme.gradient}
+                      animate
                     />
-                  </motion.div>
+                  </div>
 
-                  {/* Avatar Styles */}
-                  <div className="grid grid-cols-4 gap-2">
-                    {avatarPresets.map((style) => (
+                  {/* Color Grid */}
+                  <div className="grid grid-cols-6 gap-3">
+                    {avatarColors.map((color) => (
                       <motion.button
-                        key={style}
+                        key={color}
                         onClick={() => {
-                          setSelectedAvatarStyle(style);
+                          setSelectedColor(color);
                           playSound('pop');
                         }}
                         className={cn(
-                          'p-2 rounded-xl border-2 transition-all',
-                          selectedAvatarStyle === style
-                            ? 'border-white bg-white/20'
-                            : 'border-white/10 bg-white/5 hover:bg-white/10'
+                          'w-full aspect-square rounded-xl border-2 transition-all',
+                          selectedColor === color
+                            ? 'border-white scale-110'
+                            : 'border-transparent hover:scale-105'
                         )}
-                        whileHover={{ scale: 1.05 }}
+                        style={{ backgroundColor: color }}
+                        whileHover={{ scale: 1.1 }}
                         whileTap={{ scale: 0.95 }}
                       >
-                        <img
-                          src={getAvatarUrl(style, avatarSeed)}
-                          alt={style}
-                          className="w-full aspect-square rounded-lg"
-                        />
+                        {selectedColor === color && (
+                          <motion.div
+                            initial={{ scale: 0 }}
+                            animate={{ scale: 1 }}
+                            className="w-full h-full flex items-center justify-center"
+                          >
+                            <Check className="w-5 h-5 text-white" />
+                          </motion.div>
+                        )}
                       </motion.button>
                     ))}
                   </div>
 
-                  {/* Randomize Button */}
+                  {/* Random Color Button */}
                   <button
                     onClick={() => {
-                      setAvatarSeed(uuidv4());
+                      const randomColor = avatarColors[Math.floor(Math.random() * avatarColors.length)];
+                      setSelectedColor(randomColor);
                       playSound('pop');
                     }}
                     className="w-full py-3 bg-white/10 border border-white/20 rounded-xl text-white hover:bg-white/20 transition-all flex items-center justify-center gap-2"
                   >
                     <Sparkles className="w-5 h-5" />
-                    Randomize
+                    Random Color
                   </button>
                 </motion.div>
               )}
@@ -353,17 +355,16 @@ export function Onboarding() {
                   className="space-y-6"
                 >
                   {/* Final Avatar Preview */}
-                  <motion.div
-                    className={`w-24 h-24 mx-auto rounded-full bg-gradient-to-r ${selectedTheme.gradient} p-1`}
-                    animate={{ scale: [1, 1.05, 1] }}
-                    transition={{ duration: 2, repeat: Infinity }}
-                  >
-                    <img
-                      src={getAvatarUrl(selectedAvatarStyle, avatarSeed)}
-                      alt="Avatar"
-                      className="w-full h-full rounded-full bg-white"
+                  <div className="flex justify-center">
+                    <ColorAvatar
+                      name={displayName || username}
+                      color={selectedColor}
+                      size="xl"
+                      showBorder
+                      borderGradient={selectedTheme.gradient}
+                      animate
                     />
-                  </motion.div>
+                  </div>
 
                   <div className="text-center">
                     <h3 className="text-white font-semibold text-lg">{displayName || username}</h3>

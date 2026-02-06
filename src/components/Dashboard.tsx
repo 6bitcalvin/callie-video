@@ -22,7 +22,7 @@ import { FriendCard } from './FriendCard';
 import { ChatView } from './ChatView';
 import { CallOverlay } from './CallOverlay';
 import { IncomingCallModal } from './IncomingCallModal';
-import { SettingsModal } from './SettingsModal';
+import { ColorAvatar, stringToColor } from './ColorAvatar';
 import { Friend, colorThemes } from '@/types';
 
 type Tab = 'friends' | 'messages' | 'calls';
@@ -58,7 +58,6 @@ export function Dashboard() {
   const [activeTab, setActiveTab] = useState<Tab>('friends');
   const [searchQuery, setSearchQuery] = useState('');
   const [showAddFriend, setShowAddFriend] = useState(false);
-  const [showSettings, setShowSettings] = useState(false);
   const [friendIdInput, setFriendIdInput] = useState('');
   const [copied, setCopied] = useState(false);
   const [addFriendError, setAddFriendError] = useState('');
@@ -71,7 +70,7 @@ export function Dashboard() {
       id: targetId,
       username: 'unknown',
       displayName: 'Unknown User',
-      avatarUrl: `https://api.dicebear.com/7.x/avataaars/svg?seed=${targetId}`,
+      avatarColor: stringToColor(targetId),
       colorTheme: colorThemes[0],
       status: 'online' as const,
       lastSeen: new Date(),
@@ -84,7 +83,7 @@ export function Dashboard() {
     id: incomingCall.from,
     username: incomingCall.fromUser.displayName.toLowerCase().replace(/\s/g, '_'),
     displayName: incomingCall.fromUser.displayName,
-    avatarUrl: incomingCall.fromUser.avatarUrl || `https://api.dicebear.com/7.x/avataaars/svg?seed=${incomingCall.from}`,
+    avatarColor: incomingCall.fromUser.colorTheme || stringToColor(incomingCall.from),
     colorTheme: colorThemes.find(t => t.gradient === incomingCall.fromUser.colorTheme) || colorThemes[0],
     status: 'online',
     lastSeen: new Date(),
@@ -341,15 +340,17 @@ export function Dashboard() {
 
             {/* User Avatar */}
             <motion.div
-              className={`w-12 h-12 rounded-xl bg-gradient-to-r ${user.colorTheme.gradient} p-0.5 mt-2 cursor-pointer`}
+              className="mt-2 cursor-pointer"
               whileHover={{ scale: 1.1 }}
               whileTap={{ scale: 0.9 }}
               onClick={handleCopyId}
             >
-              <img
-                src={user.avatarUrl}
-                alt={user.displayName}
-                className="w-full h-full rounded-[10px] bg-white"
+              <ColorAvatar
+                name={user.displayName}
+                color={user.avatarColor}
+                size="md"
+                showBorder
+                borderGradient={user.colorTheme.gradient}
               />
             </motion.div>
           </div>
@@ -552,20 +553,14 @@ export function Dashboard() {
                         whileHover={{ scale: 1.01 }}
                       >
                         <div className="flex items-center gap-4">
-                          <div className="relative">
-                            <div
-                              className={`w-14 h-14 rounded-xl bg-gradient-to-r ${friend.colorTheme.gradient} p-0.5`}
-                            >
-                              <img
-                                src={friend.avatarUrl}
-                                alt={friend.displayName}
-                                className="w-full h-full rounded-[10px] bg-white"
-                              />
-                            </div>
-                            {friend.status === 'online' && (
-                              <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-green-500 rounded-full border-2 border-slate-900" />
-                            )}
-                          </div>
+                          <ColorAvatar
+                            name={friend.displayName}
+                            color={friend.avatarColor}
+                            size="lg"
+                            showBorder
+                            borderGradient={friend.colorTheme.gradient}
+                            status={friend.status}
+                          />
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center justify-between">
                               <h3 className="text-white font-semibold">{friend.displayName}</h3>
@@ -622,15 +617,13 @@ export function Dashboard() {
                       >
                         <div className="flex items-center gap-4">
                           <div className="relative">
-                            <div
-                              className={`w-14 h-14 rounded-xl bg-gradient-to-r ${friend.colorTheme.gradient} p-0.5`}
-                            >
-                              <img
-                                src={friend.avatarUrl}
-                                alt={friend.displayName}
-                                className="w-full h-full rounded-[10px] bg-white"
-                              />
-                            </div>
+                            <ColorAvatar
+                              name={friend.displayName}
+                              color={friend.avatarColor}
+                              size="lg"
+                              showBorder
+                              borderGradient={friend.colorTheme.gradient}
+                            />
                             <div className="absolute -bottom-1 -right-1 w-6 h-6 rounded-full bg-purple-500 flex items-center justify-center">
                               <Video className="w-3 h-3 text-white" />
                             </div>

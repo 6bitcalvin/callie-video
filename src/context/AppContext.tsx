@@ -3,6 +3,7 @@ import { supabase } from '@/lib/supabase';
 import { colorThemes, Friend, Message, Reaction, User } from '@/types';
 import { v4 as uuidv4 } from 'uuid';
 import { useWebRTC } from '@/hooks/useWebRTC';
+import { stringToColor } from '@/components/ColorAvatar';
 
 type AppContextType = {
   // User state
@@ -59,14 +60,11 @@ type AppContextType = {
 
 const AppContext = createContext<AppContextType | null>(null);
 
-const generateAvatar = (seed: string, style: string = 'avataaars') => {
-  return `https://api.dicebear.com/7.x/${style}/svg?seed=${seed}&backgroundColor=b6e3f4,c0aede,d1d4f9,ffd5dc,ffdfbf`;
-};
-
 // Storage keys
 const STORAGE_KEYS = {
   USER: 'callie_user',
   ONBOARDED: 'callie_onboarded',
+  FRIENDS: 'callie_friends',
 };
 
 export function AppProvider({ children }: { children: ReactNode }) {
@@ -80,7 +78,19 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return localStorage.getItem(STORAGE_KEYS.ONBOARDED) === 'true';
   });
 
-  const [friends, setFriends] = useState<Friend[]>([]);
+  const [friends, setFriends] = useState<Friend[]>(() => {
+    const stored = localStorage.getItem(STORAGE_KEYS.FRIENDS);
+    if (stored) {
+      const parsed = JSON.parse(stored);
+      // Convert date strings back to Date objects
+      return parsed.map((f: Friend) => ({
+        ...f,
+        lastSeen: new Date(f.lastSeen),
+      }));
+    }
+    return [];
+  });
+
   const [onlineUsers, setOnlineUsers] = useState<Set<string>>(new Set());
   const [activeChat, setActiveChat] = useState<Friend | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -98,7 +108,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     user?.id || '',
     user ? {
       displayName: user.displayName,
-      avatarUrl: user.avatarUrl,
+      avatarUrl: user.avatarColor, // Use color as identifier
       colorTheme: user.colorTheme.gradient,
     } : undefined
   );
@@ -118,9 +128,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
     localStorage.setItem(STORAGE_KEYS.ONBOARDED, String(value));
   }, []);
 
+  // Persist friends to localStorage
+  useEffect(() => {
+    localStorage.setItem(STORAGE_KEYS.FRIENDS, JSON.stringify(friends));
+  }, [friends]);
+
   // Sound effects
   const playSound = useCallback((sound: 'pop' | 'ring' | 'hangup' | 'message') => {
-    // Create audio context for UI sounds
     try {
       const audioContext = new (window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)();
       const oscillator = audioContext.createOscillator();
@@ -187,14 +201,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
       return;
     }
 
-    // For demo purposes, create a friend with random data
-    // In production, you would fetch the user's data from the database
+    // Create a friend with a generated color based on their ID
     const randomTheme = colorThemes[Math.floor(Math.random() * colorThemes.length)];
     const newFriend: Friend = {
       id: friendId,
       username: `user_${friendId.slice(0, 8)}`,
       displayName: `User ${friendId.slice(0, 8)}`,
-      avatarUrl: generateAvatar(friendId),
+      avatarColor: stringToColor(friendId),
       colorTheme: randomTheme,
       status: onlineUsers.has(friendId) ? 'online' : 'offline',
       lastSeen: new Date(),

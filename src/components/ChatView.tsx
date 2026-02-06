@@ -15,6 +15,7 @@ import {
 import { cn } from '@/utils/cn';
 import { Friend } from '@/types';
 import { useApp } from '@/context/AppContext';
+import { ColorAvatar } from './ColorAvatar';
 
 type ChatViewProps = {
   friend: Friend;
@@ -84,32 +85,15 @@ export function ChatView({ friend, onBack, onCall }: ChatViewProps) {
         </motion.button>
 
         <div className="flex items-center gap-3 flex-1">
-          <div className="relative">
-            <motion.div
-              className={`w-12 h-12 rounded-xl bg-gradient-to-r ${friend.colorTheme.gradient} p-0.5`}
-              animate={friend.status === 'online' ? { scale: [1, 1.05, 1] } : {}}
-              transition={{ duration: 2, repeat: Infinity }}
-            >
-              <img
-                src={friend.avatarUrl}
-                alt={friend.displayName}
-                className="w-full h-full rounded-[10px] bg-white"
-              />
-            </motion.div>
-            {friend.status === 'online' && (
-              <motion.div
-                className="absolute -bottom-0.5 -right-0.5 w-4 h-4 bg-green-500 rounded-full border-2 border-slate-900"
-                animate={{
-                  scale: [1, 1.2, 1],
-                  boxShadow: [
-                    '0 0 0 0 rgba(34, 197, 94, 0.4)',
-                    '0 0 0 6px rgba(34, 197, 94, 0)',
-                  ],
-                }}
-                transition={{ duration: 1.5, repeat: Infinity }}
-              />
-            )}
-          </div>
+          <ColorAvatar
+            name={friend.displayName}
+            color={friend.avatarColor}
+            size="md"
+            showBorder
+            borderGradient={friend.colorTheme.gradient}
+            status={friend.status}
+            animate={friend.status === 'online'}
+          />
           <div>
             <h2 className="text-white font-semibold">{friend.displayName}</h2>
             <p className="text-white/50 text-sm">
@@ -165,18 +149,15 @@ export function ChatView({ friend, onBack, onCall }: ChatViewProps) {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
           >
-            <motion.div
-              className={`w-20 h-20 rounded-full bg-gradient-to-r ${friend.colorTheme.gradient} p-0.5 mb-4`}
-              animate={{ scale: [1, 1.05, 1] }}
-              transition={{ duration: 2, repeat: Infinity }}
-            >
-              <img
-                src={friend.avatarUrl}
-                alt={friend.displayName}
-                className="w-full h-full rounded-full bg-white"
-              />
-            </motion.div>
-            <h3 className="text-white font-semibold text-lg">{friend.displayName}</h3>
+            <ColorAvatar
+              name={friend.displayName}
+              color={friend.avatarColor}
+              size="xl"
+              showBorder
+              borderGradient={friend.colorTheme.gradient}
+              animate
+            />
+            <h3 className="text-white font-semibold text-lg mt-4">{friend.displayName}</h3>
             <p className="text-white/50 text-sm mt-1">@{friend.username}</p>
             <p className="text-white/40 text-sm mt-4">
               Start the conversation by sending a message!
@@ -197,10 +178,10 @@ export function ChatView({ friend, onBack, onCall }: ChatViewProps) {
                 >
                   <div className={cn('flex items-end gap-2 max-w-[80%]', isOwn && 'flex-row-reverse')}>
                     {!isOwn && (
-                      <img
-                        src={friend.avatarUrl}
-                        alt={friend.displayName}
-                        className="w-8 h-8 rounded-lg"
+                      <ColorAvatar
+                        name={friend.displayName}
+                        color={friend.avatarColor}
+                        size="xs"
                       />
                     )}
                     <motion.div
@@ -240,7 +221,11 @@ export function ChatView({ friend, onBack, onCall }: ChatViewProps) {
               exit={{ opacity: 0, y: 10 }}
               className="flex items-center gap-2"
             >
-              <img src={friend.avatarUrl} alt={friend.displayName} className="w-8 h-8 rounded-lg" />
+              <ColorAvatar
+                name={friend.displayName}
+                color={friend.avatarColor}
+                size="xs"
+              />
               <div className="bg-white/10 backdrop-blur-xl rounded-3xl px-4 py-3 border border-white/10">
                 <div className="flex gap-1">
                   {[0, 1, 2].map((i) => (

@@ -57,7 +57,7 @@ export type User = {
   id: string;
   username: string;
   displayName: string;
-  avatarUrl: string;
+  avatarColor: string;
   colorTheme: ColorTheme;
   status: UserStatus;
 };
@@ -66,7 +66,7 @@ export type Friend = {
   id: string;
   username: string;
   displayName: string;
-  avatarUrl: string;
+  avatarColor: string;
   colorTheme: ColorTheme;
   status: UserStatus;
   lastSeen: Date;

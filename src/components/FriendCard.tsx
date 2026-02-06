@@ -2,6 +2,7 @@ import { motion } from 'framer-motion';
 import { Phone, Video, MessageCircle } from 'lucide-react';
 import { cn } from '@/utils/cn';
 import { Friend } from '@/types';
+import { ColorAvatar } from './ColorAvatar';
 
 type FriendCardProps = {
   friend: Friend;
@@ -48,49 +49,29 @@ export function FriendCard({ friend, onChat, onCall }: FriendCardProps) {
 
       <div className="relative flex items-center gap-4">
         {/* Avatar with Status */}
-        <div className="relative">
-          <motion.div
-            className={`w-14 h-14 rounded-2xl bg-gradient-to-r ${friend.colorTheme.gradient} p-0.5`}
-            animate={friend.status === 'online' ? { scale: [1, 1.05, 1] } : {}}
-            transition={{ duration: 2, repeat: Infinity }}
-          >
-            <img
-              src={friend.avatarUrl}
-              alt={friend.displayName}
-              className="w-full h-full rounded-[14px] bg-white object-cover"
-            />
-          </motion.div>
-          
-          {/* Status Indicator */}
-          <motion.div
-            className={cn(
-              'absolute -bottom-1 -right-1 w-5 h-5 rounded-full border-2 border-slate-900 flex items-center justify-center',
-              statusColors[friend.status]
-            )}
-            animate={friend.status === 'online' ? {
-              scale: [1, 1.2, 1],
-              boxShadow: [
-                '0 0 0 0 rgba(34, 197, 94, 0.4)',
-                '0 0 0 8px rgba(34, 197, 94, 0)',
-              ],
-            } : {}}
-            transition={{ duration: 1.5, repeat: Infinity }}
-          />
+        <ColorAvatar
+          name={friend.displayName}
+          color={friend.avatarColor}
+          size="lg"
+          showBorder
+          borderGradient={friend.colorTheme.gradient}
+          status={friend.status}
+          animate={friend.status === 'online'}
+        />
 
-          {/* Unread Badge */}
-          {friend.unreadCount > 0 && (
-            <motion.div
-              className="absolute -top-2 -right-2 min-w-6 h-6 bg-gradient-to-r from-pink-500 to-rose-500 rounded-full flex items-center justify-center px-1.5"
-              initial={{ scale: 0 }}
-              animate={{ scale: 1 }}
-              transition={{ type: 'spring', stiffness: 500, damping: 25 }}
-            >
-              <span className="text-white text-xs font-bold">
-                {friend.unreadCount > 99 ? '99+' : friend.unreadCount}
-              </span>
-            </motion.div>
-          )}
-        </div>
+        {/* Unread Badge */}
+        {friend.unreadCount > 0 && (
+          <motion.div
+            className="absolute top-0 left-10 min-w-6 h-6 bg-gradient-to-r from-pink-500 to-rose-500 rounded-full flex items-center justify-center px-1.5"
+            initial={{ scale: 0 }}
+            animate={{ scale: 1 }}
+            transition={{ type: 'spring', stiffness: 500, damping: 25 }}
+          >
+            <span className="text-white text-xs font-bold">
+              {friend.unreadCount > 99 ? '99+' : friend.unreadCount}
+            </span>
+          </motion.div>
+        )}
 
         {/* Info */}
         <div className="flex-1 min-w-0">

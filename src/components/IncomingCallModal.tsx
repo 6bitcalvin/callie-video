@@ -1,6 +1,7 @@
 import { motion } from 'framer-motion';
 import { Phone, PhoneOff, Video } from 'lucide-react';
 import { Friend } from '@/types';
+import { ColorAvatar } from './ColorAvatar';
 
 type IncomingCallModalProps = {
   caller: Friend;
@@ -53,7 +54,6 @@ export function IncomingCallModal({ caller, isVideo, onAccept, onReject }: Incom
           transition={{ duration: 2, repeat: Infinity, ease: 'easeInOut' }}
         >
           <motion.div
-            className={`w-48 h-48 rounded-full bg-gradient-to-r ${caller.colorTheme.gradient} p-1.5`}
             animate={{
               boxShadow: [
                 `0 0 0 0 ${caller.colorTheme.primary}66`,
@@ -61,11 +61,14 @@ export function IncomingCallModal({ caller, isVideo, onAccept, onReject }: Incom
               ],
             }}
             transition={{ duration: 1.5, repeat: Infinity }}
+            className="rounded-full"
           >
-            <img
-              src={caller.avatarUrl}
-              alt={caller.displayName}
-              className="w-full h-full rounded-full bg-white object-cover"
+            <ColorAvatar
+              name={caller.displayName}
+              color={caller.avatarColor}
+              size="2xl"
+              showBorder
+              borderGradient={caller.colorTheme.gradient}
             />
           </motion.div>
 
