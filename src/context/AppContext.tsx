@@ -344,28 +344,57 @@ export function AppProvider({ children, userProfile }: AppProviderProps) {
     channel.on('presence', { event: 'sync' }, () => {
       const state = channel.presenceState();
       const online = new Set<string>();
+      const userProfiles: Record<string, { username?: string; displayName?: string; avatarColor?: string }> = {};
       
-      Object.keys(state).forEach(key => {
+      Object.entries(state).forEach(([key, presences]) => {
         online.add(key);
+        // Get the user profile data from presence
+        if (presences && presences.length > 0) {
+          const presence = presences[0] as { username?: string; displayName?: string; avatarColor?: string };
+          userProfiles[key] = presence;
+        }
       });
       
       console.log('Presence sync - online users:', Array.from(online));
+      console.log('User profiles from presence:', userProfiles);
       setOnlineUsers(online);
       
-      // Update friends' online status
-      setFriends(prev => prev.map(friend => ({
-        ...friend,
-        status: online.has(friend.id) ? 'online' : 'offline',
-        lastSeen: online.has(friend.id) ? new Date() : friend.lastSeen,
-      })));
+      // Update friends' online status AND their profile data if we have it
+      setFriends(prev => prev.map(friend => {
+        const profile = userProfiles[friend.id];
+        return {
+          ...friend,
+          // Update profile info if available from presence
+          username: profile?.username || friend.username,
+          displayName: profile?.displayName || friend.displayName,
+          avatarColor: profile?.avatarColor || friend.avatarColor,
+          status: online.has(friend.id) ? 'online' : 'offline',
+          lastSeen: online.has(friend.id) ? new Date() : friend.lastSeen,
+        };
+      }));
     });
 
-    channel.on('presence', { event: 'join' }, ({ key }) => {
-      console.log('User joined:', key);
+    channel.on('presence', { event: 'join' }, ({ key, newPresences }) => {
+      console.log('User joined:', key, newPresences);
       setOnlineUsers(prev => new Set(prev).add(key));
-      setFriends(prev => prev.map(friend => 
-        friend.id === key ? { ...friend, status: 'online', lastSeen: new Date() } : friend
-      ));
+      
+      // Get profile data from the joining user
+      const profile = newPresences?.[0] as { username?: string; displayName?: string; avatarColor?: string } | undefined;
+      
+      setFriends(prev => prev.map(friend => {
+        if (friend.id === key) {
+          return {
+            ...friend,
+            // Update profile if available
+            username: profile?.username || friend.username,
+            displayName: profile?.displayName || friend.displayName,
+            avatarColor: profile?.avatarColor || friend.avatarColor,
+            status: 'online',
+            lastSeen: new Date(),
+          };
+        }
+        return friend;
+      }));
     });
 
     channel.on('presence', { event: 'leave' }, ({ key }) => {
@@ -384,11 +413,15 @@ export function AppProvider({ children, userProfile }: AppProviderProps) {
       console.log('Presence channel status:', status);
       if (status === 'SUBSCRIBED') {
         try {
+          // Track presence with FULL user profile data so other users can see it
           await channel.track({
             online_at: new Date().toISOString(),
             user_id: user.id,
+            username: user.username,
+            displayName: user.displayName,
+            avatarColor: user.avatarColor,
           });
-          console.log('Presence tracking started');
+          console.log('Presence tracking started with profile data');
         } catch (err) {
           console.error('Failed to track presence:', err);
         }

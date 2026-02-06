@@ -73,6 +73,16 @@ export type Friend = {
   unreadCount: number;
 };
 
+// Stored friend profile data (persists in localStorage)
+export type StoredFriend = {
+  id: string;
+  username: string;
+  displayName: string;
+  avatarColor: string;
+  colorTheme: ColorTheme;
+  addedAt: number;
+};
+
 export type Message = {
   id: string;
   senderId: string;
