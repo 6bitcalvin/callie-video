@@ -1,0 +1,460 @@
+import { createContext, useContext, useState, useEffect, useCallback, ReactNode, useRef } from 'react';
+import { supabase } from '@/lib/supabase';
+import { colorThemes, Friend, Message, Reaction, User } from '@/types';
+import { v4 as uuidv4 } from 'uuid';
+import { useWebRTC } from '@/hooks/useWebRTC';
+
+type AppContextType = {
+  // User state
+  user: User | null;
+  setUser: (user: User | null) => void;
+  isOnboarded: boolean;
+  setIsOnboarded: (value: boolean) => void;
+  
+  // Friends
+  friends: Friend[];
+  addFriend: (friendId: string) => Promise<void>;
+  removeFriend: (friendId: string) => Promise<void>;
+  onlineUsers: Set<string>;
+  
+  // Chat
+  activeChat: Friend | null;
+  setActiveChat: (friend: Friend | null) => void;
+  messages: Message[];
+  sendMessage: (content: string, type: Message['type'], fileUrl?: string) => Promise<void>;
+  isTyping: boolean;
+  setIsTyping: (value: boolean) => void;
+  friendTyping: boolean;
+  
+  // Call (from useWebRTC)
+  callState: 'idle' | 'ringing' | 'connecting' | 'connected' | 'ended';
+  localStream: MediaStream | null;
+  remoteStreams: Map<string, MediaStream>;
+  isMuted: boolean;
+  isCameraOff: boolean;
+  isScreenSharing: boolean;
+  isVideoCall: boolean;
+  incomingCall: { from: string; roomId: string; isVideo: boolean; fromUser: { displayName: string; avatarUrl: string; colorTheme: string } } | null;
+  initiateCall: (targetUserIds: string[], video: boolean) => Promise<void>;
+  acceptCall: () => Promise<void>;
+  rejectCall: () => Promise<void>;
+  endCall: () => void;
+  toggleMute: () => void;
+  toggleCamera: () => void;
+  toggleScreenShare: () => Promise<void>;
+  currentCallTargets: string[];
+  
+  // Reactions
+  reactions: Reaction[];
+  addReaction: (emoji: string) => void;
+  
+  // UI state
+  showEmojiPicker: boolean;
+  setShowEmojiPicker: (value: boolean) => void;
+  
+  // Utilities
+  playSound: (sound: 'pop' | 'ring' | 'hangup' | 'message') => void;
+  copyUserIdToClipboard: () => void;
+};
+
+const AppContext = createContext<AppContextType | null>(null);
+
+const generateAvatar = (seed: string, style: string = 'avataaars') => {
+  return `https://api.dicebear.com/7.x/${style}/svg?seed=${seed}&backgroundColor=b6e3f4,c0aede,d1d4f9,ffd5dc,ffdfbf`;
+};
+
+// Storage keys
+const STORAGE_KEYS = {
+  USER: 'callie_user',
+  ONBOARDED: 'callie_onboarded',
+};
+
+export function AppProvider({ children }: { children: ReactNode }) {
+  // Load initial state from localStorage
+  const [user, setUserState] = useState<User | null>(() => {
+    const stored = localStorage.getItem(STORAGE_KEYS.USER);
+    return stored ? JSON.parse(stored) : null;
+  });
+  
+  const [isOnboarded, setIsOnboardedState] = useState(() => {
+    return localStorage.getItem(STORAGE_KEYS.ONBOARDED) === 'true';
+  });
+
+  const [friends, setFriends] = useState<Friend[]>([]);
+  const [onlineUsers, setOnlineUsers] = useState<Set<string>>(new Set());
+  const [activeChat, setActiveChat] = useState<Friend | null>(null);
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [isTyping, setIsTyping] = useState(false);
+  const [friendTyping, setFriendTyping] = useState(false);
+  const [reactions, setReactions] = useState<Reaction[]>([]);
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+
+  const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const presenceChannelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
+  const chatChannelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
+
+  // WebRTC hook
+  const webRTC = useWebRTC(
+    user?.id || '',
+    user ? {
+      displayName: user.displayName,
+      avatarUrl: user.avatarUrl,
+      colorTheme: user.colorTheme.gradient,
+    } : undefined
+  );
+
+  // Persist user to localStorage
+  const setUser = useCallback((newUser: User | null) => {
+    setUserState(newUser);
+    if (newUser) {
+      localStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(newUser));
+    } else {
+      localStorage.removeItem(STORAGE_KEYS.USER);
+    }
+  }, []);
+
+  const setIsOnboarded = useCallback((value: boolean) => {
+    setIsOnboardedState(value);
+    localStorage.setItem(STORAGE_KEYS.ONBOARDED, String(value));
+  }, []);
+
+  // Sound effects
+  const playSound = useCallback((sound: 'pop' | 'ring' | 'hangup' | 'message') => {
+    // Create audio context for UI sounds
+    try {
+      const audioContext = new (window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)();
+      const oscillator = audioContext.createOscillator();
+      const gainNode = audioContext.createGain();
+      
+      oscillator.connect(gainNode);
+      gainNode.connect(audioContext.destination);
+      
+      switch (sound) {
+        case 'pop':
+          oscillator.frequency.value = 800;
+          gainNode.gain.value = 0.1;
+          oscillator.start();
+          oscillator.stop(audioContext.currentTime + 0.1);
+          break;
+        case 'message':
+          oscillator.frequency.value = 600;
+          gainNode.gain.value = 0.1;
+          oscillator.start();
+          setTimeout(() => {
+            oscillator.frequency.value = 800;
+          }, 100);
+          oscillator.stop(audioContext.currentTime + 0.2);
+          break;
+        case 'ring':
+          oscillator.frequency.value = 440;
+          gainNode.gain.value = 0.15;
+          oscillator.start();
+          const ringInterval = setInterval(() => {
+            oscillator.frequency.value = oscillator.frequency.value === 440 ? 520 : 440;
+          }, 500);
+          setTimeout(() => {
+            clearInterval(ringInterval);
+            oscillator.stop();
+          }, 2000);
+          break;
+        case 'hangup':
+          oscillator.frequency.value = 400;
+          gainNode.gain.value = 0.1;
+          oscillator.start();
+          oscillator.frequency.linearRampToValueAtTime(200, audioContext.currentTime + 0.3);
+          oscillator.stop(audioContext.currentTime + 0.3);
+          break;
+      }
+    } catch (e) {
+      console.log('Audio not supported');
+    }
+  }, []);
+
+  // Copy user ID to clipboard
+  const copyUserIdToClipboard = useCallback(() => {
+    if (user) {
+      navigator.clipboard.writeText(user.id);
+      playSound('pop');
+    }
+  }, [user, playSound]);
+
+  // Add friend by ID
+  const addFriend = useCallback(async (friendId: string) => {
+    if (!user || friendId === user.id) return;
+
+    // Check if already a friend
+    if (friends.some(f => f.id === friendId)) {
+      return;
+    }
+
+    // For demo purposes, create a friend with random data
+    // In production, you would fetch the user's data from the database
+    const randomTheme = colorThemes[Math.floor(Math.random() * colorThemes.length)];
+    const newFriend: Friend = {
+      id: friendId,
+      username: `user_${friendId.slice(0, 8)}`,
+      displayName: `User ${friendId.slice(0, 8)}`,
+      avatarUrl: generateAvatar(friendId),
+      colorTheme: randomTheme,
+      status: onlineUsers.has(friendId) ? 'online' : 'offline',
+      lastSeen: new Date(),
+      unreadCount: 0,
+    };
+
+    setFriends(prev => [...prev, newFriend]);
+    playSound('pop');
+  }, [user, friends, onlineUsers, playSound]);
+
+  // Remove friend
+  const removeFriend = useCallback(async (friendId: string) => {
+    setFriends(prev => prev.filter(f => f.id !== friendId));
+    if (activeChat?.id === friendId) {
+      setActiveChat(null);
+    }
+  }, [activeChat]);
+
+  // Send message
+  const sendMessage = useCallback(async (content: string, type: Message['type'], fileUrl?: string) => {
+    if (!user || !activeChat) return;
+
+    const newMessage: Message = {
+      id: uuidv4(),
+      senderId: user.id,
+      receiverId: activeChat.id,
+      content,
+      type,
+      fileUrl,
+      createdAt: new Date(),
+      read: false,
+    };
+
+    setMessages(prev => [...prev, newMessage]);
+    playSound('pop');
+
+    // Broadcast message to the chat channel
+    if (chatChannelRef.current) {
+      chatChannelRef.current.send({
+        type: 'broadcast',
+        event: 'message',
+        payload: {
+          ...newMessage,
+          createdAt: newMessage.createdAt.toISOString(),
+        },
+      });
+    }
+  }, [user, activeChat, playSound]);
+
+  // Add reaction
+  const addReaction = useCallback((emoji: string) => {
+    if (!user) return;
+
+    const newReaction: Reaction = {
+      id: uuidv4(),
+      emoji,
+      userId: user.id,
+      timestamp: Date.now(),
+    };
+
+    setReactions(prev => [...prev, newReaction]);
+    playSound('pop');
+
+    // Auto-remove after animation
+    setTimeout(() => {
+      setReactions(prev => prev.filter(r => r.id !== newReaction.id));
+    }, 3000);
+  }, [user, playSound]);
+
+  // Handle typing indicator
+  useEffect(() => {
+    if (!isTyping || !chatChannelRef.current) return;
+
+    chatChannelRef.current.send({
+      type: 'broadcast',
+      event: 'typing',
+      payload: { userId: user?.id },
+    });
+
+    // Clear typing after 3 seconds of no activity
+    if (typingTimeoutRef.current) {
+      clearTimeout(typingTimeoutRef.current);
+    }
+    typingTimeoutRef.current = setTimeout(() => {
+      setIsTyping(false);
+    }, 3000);
+  }, [isTyping, user]);
+
+  // Setup presence channel when user is set
+  useEffect(() => {
+    if (!user) return;
+
+    const channel = supabase.channel('presence:global', {
+      config: { presence: { key: user.id } }
+    });
+
+    channel.on('presence', { event: 'sync' }, () => {
+      const state = channel.presenceState();
+      const online = new Set<string>();
+      
+      Object.keys(state).forEach(key => {
+        online.add(key);
+      });
+      
+      setOnlineUsers(online);
+      
+      // Update friends' online status
+      setFriends(prev => prev.map(friend => ({
+        ...friend,
+        status: online.has(friend.id) ? 'online' : 'offline',
+        lastSeen: online.has(friend.id) ? new Date() : friend.lastSeen,
+      })));
+    });
+
+    channel.on('presence', { event: 'join' }, ({ key }) => {
+      setOnlineUsers(prev => new Set(prev).add(key));
+      setFriends(prev => prev.map(friend => 
+        friend.id === key ? { ...friend, status: 'online', lastSeen: new Date() } : friend
+      ));
+    });
+
+    channel.on('presence', { event: 'leave' }, ({ key }) => {
+      setOnlineUsers(prev => {
+        const next = new Set(prev);
+        next.delete(key);
+        return next;
+      });
+      setFriends(prev => prev.map(friend =>
+        friend.id === key ? { ...friend, status: 'offline', lastSeen: new Date() } : friend
+      ));
+    });
+
+    channel.subscribe(async (status) => {
+      if (status === 'SUBSCRIBED') {
+        await channel.track({
+          online_at: new Date().toISOString(),
+          user_id: user.id,
+        });
+      }
+    });
+
+    presenceChannelRef.current = channel;
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [user]);
+
+  // Setup chat channel when active chat changes
+  useEffect(() => {
+    if (!user || !activeChat) {
+      if (chatChannelRef.current) {
+        supabase.removeChannel(chatChannelRef.current);
+        chatChannelRef.current = null;
+      }
+      return;
+    }
+
+    // Create a consistent room ID (sorted user IDs)
+    const roomId = [user.id, activeChat.id].sort().join(':');
+    const channel = supabase.channel(`chat:${roomId}`, {
+      config: { broadcast: { self: false } }
+    });
+
+    channel.on('broadcast', { event: 'message' }, ({ payload }) => {
+      const message = {
+        ...payload,
+        createdAt: new Date(payload.createdAt),
+      } as Message;
+      
+      // Only add if from the other person
+      if (message.senderId !== user.id) {
+        setMessages(prev => [...prev, message]);
+        playSound('message');
+      }
+    });
+
+    channel.on('broadcast', { event: 'typing' }, ({ payload }) => {
+      if (payload.userId !== user.id) {
+        setFriendTyping(true);
+        setTimeout(() => setFriendTyping(false), 3000);
+      }
+    });
+
+    channel.subscribe();
+    chatChannelRef.current = channel;
+
+    // Clear messages when switching chats
+    setMessages([]);
+    setFriendTyping(false);
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [user, activeChat, playSound]);
+
+  return (
+    <AppContext.Provider
+      value={{
+        // User
+        user,
+        setUser,
+        isOnboarded,
+        setIsOnboarded,
+        
+        // Friends
+        friends,
+        addFriend,
+        removeFriend,
+        onlineUsers,
+        
+        // Chat
+        activeChat,
+        setActiveChat,
+        messages,
+        sendMessage,
+        isTyping,
+        setIsTyping,
+        friendTyping,
+        
+        // Call
+        callState: webRTC.callState,
+        localStream: webRTC.localStream,
+        remoteStreams: webRTC.remoteStreams,
+        isMuted: webRTC.isMuted,
+        isCameraOff: webRTC.isCameraOff,
+        isScreenSharing: webRTC.isScreenSharing,
+        isVideoCall: webRTC.isVideoCall,
+        incomingCall: webRTC.incomingCall,
+        initiateCall: webRTC.initiateCall,
+        acceptCall: webRTC.acceptCall,
+        rejectCall: webRTC.rejectCall,
+        endCall: webRTC.endCall,
+        toggleMute: webRTC.toggleMute,
+        toggleCamera: webRTC.toggleCamera,
+        toggleScreenShare: webRTC.toggleScreenShare,
+        currentCallTargets: webRTC.currentCallTargets,
+        
+        // Reactions
+        reactions,
+        addReaction,
+        
+        // UI
+        showEmojiPicker,
+        setShowEmojiPicker,
+        
+        // Utilities
+        playSound,
+        copyUserIdToClipboard,
+      }}
+    >
+      {children}
+    </AppContext.Provider>
+  );
+}
+
+export function useApp() {
+  const context = useContext(AppContext);
+  if (!context) {
+    throw new Error('useApp must be used within AppProvider');
+  }
+  return context;
+}
