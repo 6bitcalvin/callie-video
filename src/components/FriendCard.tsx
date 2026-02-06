@@ -100,40 +100,40 @@ export function FriendCard({ friend, onChat, onCall, onRemove }: FriendCardProps
             </div>
           </div>
 
-          {/* Action Buttons */}
-          <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+          {/* Action Buttons - Always visible on mobile, hover on desktop */}
+          <div className="flex items-center gap-1.5 md:gap-2 opacity-100 md:opacity-0 group-hover:opacity-100 transition-opacity">
             <motion.button
               onClick={(e) => {
                 e.stopPropagation();
                 onChat();
               }}
-              className="w-10 h-10 rounded-xl bg-white/10 border border-white/20 flex items-center justify-center text-white hover:bg-white/20 transition-all"
+              className="hidden md:flex w-9 md:w-10 h-9 md:h-10 rounded-lg md:rounded-xl bg-white/10 border border-white/20 items-center justify-center text-white hover:bg-white/20 transition-all"
               whileHover={{ scale: 1.1 }}
               whileTap={{ scale: 0.9 }}
             >
-              <MessageCircle className="w-5 h-5" />
+              <MessageCircle className="w-4 md:w-5 h-4 md:h-5" />
             </motion.button>
             <motion.button
               onClick={(e) => {
                 e.stopPropagation();
                 onCall(false);
               }}
-              className="w-10 h-10 rounded-xl bg-white/10 border border-white/20 flex items-center justify-center text-white hover:bg-white/20 transition-all"
+              className="w-9 md:w-10 h-9 md:h-10 rounded-lg md:rounded-xl bg-white/10 border border-white/20 flex items-center justify-center text-white hover:bg-white/20 transition-all"
               whileHover={{ scale: 1.1 }}
               whileTap={{ scale: 0.9 }}
             >
-              <Phone className="w-5 h-5" />
+              <Phone className="w-4 md:w-5 h-4 md:h-5" />
             </motion.button>
             <motion.button
               onClick={(e) => {
                 e.stopPropagation();
                 onCall(true);
               }}
-              className={`w-10 h-10 rounded-xl bg-gradient-to-r ${friend.colorTheme.gradient} flex items-center justify-center text-white transition-all`}
+              className={`w-9 md:w-10 h-9 md:h-10 rounded-lg md:rounded-xl bg-gradient-to-r ${friend.colorTheme.gradient} flex items-center justify-center text-white transition-all`}
               whileHover={{ scale: 1.1 }}
               whileTap={{ scale: 0.9 }}
             >
-              <Video className="w-5 h-5" />
+              <Video className="w-4 md:w-5 h-4 md:h-5" />
             </motion.button>
             
             {/* More Menu */}

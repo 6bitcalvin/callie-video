@@ -122,3 +122,33 @@ export type UserProfile = {
   colorTheme: ColorTheme;
   email?: string;
 };
+
+export type IncomingCall = {
+  callId: string;
+  callerId: string;
+  callerName: string;
+  callerAvatar: string;
+  isVideo: boolean;
+  isGroupCall: boolean;
+  participants?: string[];
+};
+
+export type GroupCallParticipant = {
+  userId: string;
+  username: string;
+  displayName: string;
+  avatarColor: string;
+  stream: MediaStream | null;
+  peerConnection: RTCPeerConnection | null;
+  isMuted: boolean;
+  isCameraOff: boolean;
+  isConnected: boolean;
+};
+
+export type GroupCall = {
+  callId: string;
+  participants: GroupCallParticipant[];
+  initiatorId: string;
+  status: 'ringing' | 'connecting' | 'active' | 'ended';
+  isVideo: boolean;
+};

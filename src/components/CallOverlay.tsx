@@ -183,9 +183,9 @@ export function CallOverlay({
   const getGridClass = () => {
     const count = participants.length + 1;
     if (count === 1) return 'grid-cols-1';
-    if (count === 2) return 'grid-cols-2';
+    if (count === 2) return 'grid-cols-1 md:grid-cols-2';
     if (count <= 4) return 'grid-cols-2 grid-rows-2';
-    return 'grid-cols-3 grid-rows-2';
+    return 'grid-cols-2 md:grid-cols-3 grid-rows-2';
   };
 
   if (!user) return null;
@@ -302,8 +302,8 @@ export function CallOverlay({
 
       {/* Video Grid */}
       {callState === 'connected' && (
-        <div className="relative h-full pt-16 pb-28 px-4">
-          <div className={cn('h-full gap-4', layout === 'grid' ? `grid ${getGridClass()}` : 'flex')}>
+        <div className="relative h-full pt-14 md:pt-16 pb-24 md:pb-28 px-2 md:px-4">
+          <div className={cn('h-full gap-2 md:gap-4', layout === 'grid' ? `grid ${getGridClass()}` : 'flex')}>
             {/* Local Video */}
             <VideoTile
               stream={localStream}
@@ -331,14 +331,14 @@ export function CallOverlay({
 
       {/* Top Bar */}
       <motion.div
-        className="absolute top-0 left-0 right-0 backdrop-blur-xl bg-black/30 px-6 py-4 flex items-center justify-between"
+        className="absolute top-0 left-0 right-0 backdrop-blur-xl bg-black/30 px-3 md:px-6 py-3 md:py-4 flex items-center justify-between safe-area-pt"
         initial={{ y: -20, opacity: 0 }}
         animate={{ y: 0, opacity: 1 }}
       >
-        <div className="flex items-center gap-4">
-          <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 md:gap-4">
+          <div className="flex items-center gap-1.5 md:gap-2">
             <motion.div
-              className="w-3 h-3 bg-green-500 rounded-full"
+              className="w-2.5 md:w-3 h-2.5 md:h-3 bg-green-500 rounded-full"
               animate={{
                 scale: [1, 1.2, 1],
                 boxShadow: [
@@ -348,48 +348,48 @@ export function CallOverlay({
               }}
               transition={{ duration: 1.5, repeat: Infinity }}
             />
-            <span className="text-white/80 font-medium">{formatDuration(callDuration)}</span>
+            <span className="text-white/80 font-medium text-sm md:text-base">{formatDuration(callDuration)}</span>
           </div>
           <div className="flex -space-x-2">
-            {participants.slice(0, 3).map((p) => (
+            {participants.slice(0, 2).map((p) => (
               <div
                 key={p.id}
-                className="w-8 h-8 rounded-full border-2 border-slate-900 flex items-center justify-center text-white text-xs font-bold"
+                className="w-6 md:w-8 h-6 md:h-8 rounded-full border-2 border-slate-900 flex items-center justify-center text-white text-xs font-bold"
                 style={{ backgroundColor: p.avatarColor }}
               >
                 {p.displayName.substring(0, 1).toUpperCase()}
               </div>
             ))}
-            {participants.length > 3 && (
-              <div className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center text-white text-xs font-bold border-2 border-slate-900">
-                +{participants.length - 3}
+            {participants.length > 2 && (
+              <div className="w-6 md:w-8 h-6 md:h-8 rounded-full bg-white/20 flex items-center justify-center text-white text-xs font-bold border-2 border-slate-900">
+                +{participants.length - 2}
               </div>
             )}
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5 md:gap-2">
           <motion.button
             onClick={() => setLayout(layout === 'grid' ? 'spotlight' : 'grid')}
-            className="w-10 h-10 rounded-xl bg-white/10 flex items-center justify-center text-white hover:bg-white/20 transition-all"
+            className="w-8 md:w-10 h-8 md:h-10 rounded-lg md:rounded-xl bg-white/10 flex items-center justify-center text-white hover:bg-white/20 transition-all"
             whileHover={{ scale: 1.1 }}
             whileTap={{ scale: 0.9 }}
           >
-            {layout === 'grid' ? <Maximize2 className="w-5 h-5" /> : <Grid3X3 className="w-5 h-5" />}
+            {layout === 'grid' ? <Maximize2 className="w-4 md:w-5 h-4 md:h-5" /> : <Grid3X3 className="w-4 md:w-5 h-4 md:h-5" />}
           </motion.button>
           <motion.button
-            className="w-10 h-10 rounded-xl bg-white/10 flex items-center justify-center text-white hover:bg-white/20 transition-all"
+            className="hidden sm:flex w-8 md:w-10 h-8 md:h-10 rounded-lg md:rounded-xl bg-white/10 items-center justify-center text-white hover:bg-white/20 transition-all"
             whileHover={{ scale: 1.1 }}
             whileTap={{ scale: 0.9 }}
           >
-            <Users className="w-5 h-5" />
+            <Users className="w-4 md:w-5 h-4 md:h-5" />
           </motion.button>
           <motion.button
-            className="w-10 h-10 rounded-xl bg-white/10 flex items-center justify-center text-white hover:bg-white/20 transition-all"
+            className="w-8 md:w-10 h-8 md:h-10 rounded-lg md:rounded-xl bg-white/10 flex items-center justify-center text-white hover:bg-white/20 transition-all"
             whileHover={{ scale: 1.1 }}
             whileTap={{ scale: 0.9 }}
           >
-            <MoreHorizontal className="w-5 h-5" />
+            <MoreHorizontal className="w-4 md:w-5 h-4 md:h-5" />
           </motion.button>
         </div>
       </motion.div>

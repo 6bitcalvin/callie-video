@@ -80,35 +80,35 @@ export function ChatView({ friend, onBack, onCall, onRemoveFriend }: ChatViewPro
   };
 
   return (
-    <div className="flex flex-col h-full bg-gradient-to-br from-slate-900 via-purple-900/50 to-slate-900">
+    <div className="flex flex-col h-screen bg-gradient-to-br from-slate-900 via-purple-900/50 to-slate-900">
       {/* Header */}
       <motion.div
-        className="backdrop-blur-xl bg-white/5 border-b border-white/10 px-4 py-3 flex items-center gap-4"
+        className="backdrop-blur-xl bg-white/5 border-b border-white/10 px-3 md:px-4 py-2 md:py-3 flex items-center gap-2 md:gap-4 safe-area-pt"
         initial={{ opacity: 0, y: -20 }}
         animate={{ opacity: 1, y: 0 }}
       >
         <motion.button
           onClick={onBack}
-          className="w-10 h-10 rounded-xl bg-white/10 flex items-center justify-center text-white hover:bg-white/20 transition-all"
+          className="w-9 md:w-10 h-9 md:h-10 rounded-lg md:rounded-xl bg-white/10 flex items-center justify-center text-white hover:bg-white/20 transition-all"
           whileHover={{ scale: 1.1 }}
           whileTap={{ scale: 0.9 }}
         >
           <ArrowLeft className="w-5 h-5" />
         </motion.button>
 
-        <div className="flex items-center gap-3 flex-1">
+        <div className="flex items-center gap-2 md:gap-3 flex-1 min-w-0">
           <ColorAvatar
             name={friend.displayName}
             color={friend.avatarColor}
-            size="md"
+            size="sm"
             showBorder
             borderGradient={friend.colorTheme.gradient}
             status={friend.status}
             animate={friend.status === 'online'}
           />
-          <div>
-            <h2 className="text-white font-semibold">{friend.displayName}</h2>
-            <p className="text-white/50 text-sm">
+          <div className="min-w-0">
+            <h2 className="text-white font-semibold text-sm md:text-base truncate">{friend.displayName}</h2>
+            <p className="text-white/50 text-xs md:text-sm truncate">
               {friendTyping ? (
                 <motion.span
                   animate={{ opacity: [1, 0.5, 1] }}
@@ -126,33 +126,33 @@ export function ChatView({ friend, onBack, onCall, onRemoveFriend }: ChatViewPro
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5 md:gap-2">
           <motion.button
             onClick={() => onCall(false)}
-            className="w-10 h-10 rounded-xl bg-white/10 flex items-center justify-center text-white hover:bg-white/20 transition-all"
+            className="w-9 md:w-10 h-9 md:h-10 rounded-lg md:rounded-xl bg-white/10 flex items-center justify-center text-white hover:bg-white/20 transition-all"
             whileHover={{ scale: 1.1 }}
             whileTap={{ scale: 0.9 }}
           >
-            <Phone className="w-5 h-5" />
+            <Phone className="w-4 md:w-5 h-4 md:h-5" />
           </motion.button>
           <motion.button
             onClick={() => onCall(true)}
-            className={`w-10 h-10 rounded-xl bg-gradient-to-r ${friend.colorTheme.gradient} flex items-center justify-center text-white transition-all`}
+            className={`w-9 md:w-10 h-9 md:h-10 rounded-lg md:rounded-xl bg-gradient-to-r ${friend.colorTheme.gradient} flex items-center justify-center text-white transition-all`}
             whileHover={{ scale: 1.1 }}
             whileTap={{ scale: 0.9 }}
           >
-            <Video className="w-5 h-5" />
+            <Video className="w-4 md:w-5 h-4 md:h-5" />
           </motion.button>
           
           {/* More menu with remove friend option */}
           <div className="relative">
             <motion.button
               onClick={() => setShowMenu(!showMenu)}
-              className="w-10 h-10 rounded-xl bg-white/10 flex items-center justify-center text-white hover:bg-white/20 transition-all"
+              className="w-9 md:w-10 h-9 md:h-10 rounded-lg md:rounded-xl bg-white/10 flex items-center justify-center text-white hover:bg-white/20 transition-all"
               whileHover={{ scale: 1.1 }}
               whileTap={{ scale: 0.9 }}
             >
-              <MoreVertical className="w-5 h-5" />
+              <MoreVertical className="w-4 md:w-5 h-4 md:h-5" />
             </motion.button>
             
             <AnimatePresence>
@@ -373,33 +373,33 @@ export function ChatView({ friend, onBack, onCall, onRemoveFriend }: ChatViewPro
 
       {/* Input Area - Desktop aligned */}
       <motion.div
-        className="backdrop-blur-xl bg-white/5 border-t border-white/10 p-4"
+        className="backdrop-blur-xl bg-white/5 border-t border-white/10 p-3 md:p-4 safe-area-pb"
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
       >
-        <div className="max-w-3xl mx-auto flex items-center gap-3">
+        <div className="max-w-3xl mx-auto flex items-center gap-2 md:gap-3">
           <motion.button
             onClick={() => setShowEmojiPicker(!showEmojiPicker)}
-            className="w-10 h-10 rounded-xl bg-white/10 flex items-center justify-center text-white hover:bg-white/20 transition-all"
+            className="w-9 md:w-10 h-9 md:h-10 rounded-lg md:rounded-xl bg-white/10 flex items-center justify-center text-white hover:bg-white/20 transition-all flex-shrink-0"
             whileHover={{ scale: 1.1 }}
             whileTap={{ scale: 0.9 }}
           >
             <Smile className="w-5 h-5" />
           </motion.button>
 
-          <div className="flex-1 relative">
+          <div className="flex-1 relative min-w-0">
             <input
               type="text"
               value={inputValue}
               onChange={handleInputChange}
               onKeyDown={handleKeyPress}
               placeholder="Type a message..."
-              className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-2xl text-white placeholder-white/40 focus:outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20 transition-all"
+              className="w-full px-3 md:px-4 py-2.5 md:py-3 bg-white/10 border border-white/20 rounded-xl md:rounded-2xl text-white text-sm md:text-base placeholder-white/40 focus:outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20 transition-all"
             />
           </div>
 
           <motion.button
-            className="w-10 h-10 rounded-xl bg-white/10 flex items-center justify-center text-white hover:bg-white/20 transition-all hidden md:flex"
+            className="w-10 h-10 rounded-xl bg-white/10 flex items-center justify-center text-white hover:bg-white/20 transition-all hidden md:flex flex-shrink-0"
             whileHover={{ scale: 1.1 }}
             whileTap={{ scale: 0.9 }}
           >
@@ -407,7 +407,7 @@ export function ChatView({ friend, onBack, onCall, onRemoveFriend }: ChatViewPro
           </motion.button>
 
           <motion.button
-            className="w-10 h-10 rounded-xl bg-white/10 flex items-center justify-center text-white hover:bg-white/20 transition-all hidden md:flex"
+            className="w-10 h-10 rounded-xl bg-white/10 flex items-center justify-center text-white hover:bg-white/20 transition-all hidden md:flex flex-shrink-0"
             whileHover={{ scale: 1.1 }}
             whileTap={{ scale: 0.9 }}
           >
@@ -417,7 +417,7 @@ export function ChatView({ friend, onBack, onCall, onRemoveFriend }: ChatViewPro
           {inputValue ? (
             <motion.button
               onClick={handleSend}
-              className={`w-12 h-12 rounded-2xl bg-gradient-to-r ${friend.colorTheme.gradient} flex items-center justify-center text-white transition-all shadow-lg`}
+              className={`w-10 md:w-12 h-10 md:h-12 rounded-xl md:rounded-2xl bg-gradient-to-r ${friend.colorTheme.gradient} flex items-center justify-center text-white transition-all shadow-lg flex-shrink-0`}
               whileHover={{ scale: 1.1 }}
               whileTap={{ scale: 0.9 }}
               initial={{ scale: 0 }}
@@ -431,7 +431,7 @@ export function ChatView({ friend, onBack, onCall, onRemoveFriend }: ChatViewPro
               onMouseUp={() => setIsRecording(false)}
               onMouseLeave={() => setIsRecording(false)}
               className={cn(
-                'w-12 h-12 rounded-2xl flex items-center justify-center text-white transition-all',
+                'w-10 md:w-12 h-10 md:h-12 rounded-xl md:rounded-2xl flex items-center justify-center text-white transition-all flex-shrink-0',
                 isRecording
                   ? 'bg-red-500 shadow-lg shadow-red-500/50'
                   : `bg-gradient-to-r ${friend.colorTheme.gradient} shadow-lg`

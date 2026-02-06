@@ -4,6 +4,7 @@ export { FriendCard } from './FriendCard';
 export { ChatView } from './ChatView';
 export { CallOverlay } from './CallOverlay';
 export { IncomingCallModal } from './IncomingCallModal';
+export { GroupCallModal } from './GroupCallModal';
 export { VoiceWaveform } from './VoiceWaveform';
 export { EmojiReaction } from './EmojiReaction';
 export { StatusIndicator } from './StatusIndicator';

@@ -15,6 +15,7 @@ import {
   Check,
   UserPlus,
   X,
+  UsersRound,
 } from 'lucide-react';
 import { cn } from '@/utils/cn';
 import { useApp } from '@/context/AppContext';
@@ -22,6 +23,7 @@ import { FriendCard } from './FriendCard';
 import { ChatView } from './ChatView';
 import { CallOverlay } from './CallOverlay';
 import { IncomingCallModal } from './IncomingCallModal';
+import { GroupCallModal } from './GroupCallModal';
 import { ColorAvatar, stringToColor } from './ColorAvatar';
 import { Friend, colorThemes } from '@/types';
 
@@ -66,6 +68,8 @@ export function Dashboard({ onLogout }: DashboardProps) {
   const [friendIdInput, setFriendIdInput] = useState('');
   const [copied, setCopied] = useState(false);
   const [addFriendError, setAddFriendError] = useState('');
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [showGroupCall, setShowGroupCall] = useState(false);
 
   // Get call participants as Friend objects
   const callParticipants: Friend[] = currentCallTargets.map(targetId => {
@@ -131,6 +135,11 @@ export function Dashboard({ onLogout }: DashboardProps) {
     onLogout();
   };
 
+  const handleStartGroupCall = async (friendIds: string[], isVideo: boolean) => {
+    await initiateCall(friendIds, isVideo);
+    playSound('ring');
+  };
+
   // Play sound on incoming call
   useEffect(() => {
     if (incomingCall) {
@@ -155,7 +164,7 @@ export function Dashboard({ onLogout }: DashboardProps) {
   const inCall = callState !== 'idle';
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900/50 to-slate-900">
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900/50 to-slate-900 overflow-x-hidden">
       {/* Call Overlay */}
       <AnimatePresence>
         {inCall && (
@@ -186,6 +195,15 @@ export function Dashboard({ onLogout }: DashboardProps) {
           />
         )}
       </AnimatePresence>
+
+      {/* Group Call Modal */}
+      <GroupCallModal
+        isOpen={showGroupCall}
+        onClose={() => setShowGroupCall(false)}
+        friends={friends}
+        onStartCall={handleStartGroupCall}
+        themeGradient={user.colorTheme.gradient}
+      />
 
       {/* Add Friend Modal */}
       <AnimatePresence>
@@ -269,9 +287,51 @@ export function Dashboard({ onLogout }: DashboardProps) {
 
       {/* Main Content */}
       <div className="flex h-screen">
-        {/* Sidebar */}
+        {/* Mobile Bottom Nav (shown on small screens) */}
+        <div className="fixed bottom-0 left-0 right-0 z-50 md:hidden">
+          <div className="backdrop-blur-xl bg-slate-900/90 border-t border-white/10 flex items-center justify-around py-2 px-4 safe-area-pb">
+            {[
+              { id: 'friends' as Tab, icon: Users, label: 'Friends' },
+              { id: 'messages' as Tab, icon: MessageSquare, label: 'Chats' },
+              { id: 'calls' as Tab, icon: Phone, label: 'Calls' },
+            ].map(({ id, icon: Icon, label }) => (
+              <motion.button
+                key={id}
+                onClick={() => setActiveTab(id)}
+                className={cn(
+                  'flex flex-col items-center gap-1 px-4 py-2 rounded-xl transition-all',
+                  activeTab === id
+                    ? `bg-gradient-to-r ${user.colorTheme.gradient} text-white`
+                    : 'text-white/50'
+                )}
+                whileTap={{ scale: 0.95 }}
+              >
+                <Icon className="w-5 h-5" />
+                <span className="text-xs font-medium">{label}</span>
+              </motion.button>
+            ))}
+            <motion.button
+              onClick={() => setShowGroupCall(true)}
+              className="flex flex-col items-center gap-1 px-3 py-2 rounded-xl bg-gradient-to-r from-green-500 to-emerald-500 text-white"
+              whileTap={{ scale: 0.95 }}
+            >
+              <UsersRound className="w-5 h-5" />
+              <span className="text-xs font-medium">Group</span>
+            </motion.button>
+            <motion.button
+              onClick={() => setShowAddFriend(true)}
+              className={`flex flex-col items-center gap-1 px-3 py-2 rounded-xl bg-gradient-to-r ${user.colorTheme.gradient} text-white`}
+              whileTap={{ scale: 0.95 }}
+            >
+              <Plus className="w-5 h-5" />
+              <span className="text-xs font-medium">Add</span>
+            </motion.button>
+          </div>
+        </div>
+
+        {/* Sidebar (hidden on mobile) */}
         <motion.div
-          className="w-20 backdrop-blur-xl bg-white/5 border-r border-white/10 flex flex-col items-center py-6 gap-4"
+          className="hidden md:flex w-20 backdrop-blur-xl bg-white/5 border-r border-white/10 flex-col items-center py-6 gap-4"
           initial={{ x: -80, opacity: 0 }}
           animate={{ x: 0, opacity: 1 }}
         >
@@ -357,14 +417,14 @@ export function Dashboard({ onLogout }: DashboardProps) {
         <div className="flex-1 flex flex-col">
           {/* Header */}
           <motion.div
-            className="backdrop-blur-xl bg-white/5 border-b border-white/10 px-6 py-4"
+            className="backdrop-blur-xl bg-white/5 border-b border-white/10 px-4 md:px-6 py-3 md:py-4"
             initial={{ y: -20, opacity: 0 }}
             animate={{ y: 0, opacity: 1 }}
           >
             <div className="flex items-center justify-between">
-              <div>
-                <div className="flex items-center gap-2">
-                  <h1 className="text-2xl font-bold text-white">
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <h1 className="text-xl md:text-2xl font-bold text-white">
                     {activeTab === 'friends' && 'Friends'}
                     {activeTab === 'messages' && 'Messages'}
                     {activeTab === 'calls' && 'Recent Calls'}
@@ -379,53 +439,100 @@ export function Dashboard({ onLogout }: DashboardProps) {
                       } : {}}
                       transition={{ duration: 1.5, repeat: Infinity }}
                     />
-                    <span className={`text-xs ${isConnected ? 'text-green-400' : 'text-red-400'}`}>
+                    <span className={`text-xs ${isConnected ? 'text-green-400' : 'text-red-400'} hidden sm:inline`}>
                       {isConnected ? 'Connected' : 'Disconnected'}
                     </span>
                   </div>
                 </div>
                 {connectionError && (
-                  <p className="text-red-400 text-xs mt-1">Error: {connectionError}</p>
+                  <p className="text-red-400 text-xs mt-1 truncate">Error: {connectionError}</p>
                 )}
                 {!isConnected && (
-                  <p className="text-yellow-400 text-xs mt-1">Connecting to Supabase... Please wait</p>
+                  <p className="text-yellow-400 text-xs mt-1">Connecting...</p>
                 )}
-                <p className="text-white/50 text-sm mt-1">
+                <p className="text-white/50 text-xs md:text-sm mt-1">
                   {activeTab === 'friends' && `${onlineFriends.length} online, ${offlineFriends.length} offline`}
                   {activeTab === 'messages' && 'Your conversations'}
                   {activeTab === 'calls' && 'Call history'}
                 </p>
               </div>
 
-              <div className="flex items-center gap-3">
-                {/* Search */}
-                <div className="relative">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-white/40" />
+              <div className="flex items-center gap-2 md:gap-3">
+                {/* Search - Hidden on mobile, shown on tablet+ */}
+                <div className="relative hidden sm:block">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 md:w-5 h-4 md:h-5 text-white/40" />
                   <input
                     type="text"
                     placeholder="Search..."
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
-                    className="w-64 pl-10 pr-4 py-2.5 bg-white/10 border border-white/20 rounded-xl text-white placeholder-white/40 focus:outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20 transition-all"
+                    className="w-40 md:w-64 pl-9 md:pl-10 pr-4 py-2 md:py-2.5 bg-white/10 border border-white/20 rounded-xl text-white text-sm placeholder-white/40 focus:outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20 transition-all"
                   />
                 </div>
 
-                {/* Add Friend Button */}
+                {/* Mobile Search Button */}
+                <motion.button
+                  onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+                  className="sm:hidden w-10 h-10 rounded-xl bg-white/10 flex items-center justify-center text-white/60"
+                  whileTap={{ scale: 0.95 }}
+                >
+                  <Search className="w-5 h-5" />
+                </motion.button>
+
+                {/* Add Friend Button - Hidden on mobile (in bottom nav) */}
                 <motion.button
                   onClick={() => setShowAddFriend(true)}
-                  className={`px-4 py-2.5 bg-gradient-to-r ${user.colorTheme.gradient} rounded-xl text-white font-medium flex items-center gap-2 shadow-lg`}
+                  className={`hidden md:flex px-4 py-2.5 bg-gradient-to-r ${user.colorTheme.gradient} rounded-xl text-white font-medium items-center gap-2 shadow-lg`}
                   whileHover={{ scale: 1.05 }}
                   whileTap={{ scale: 0.95 }}
                 >
                   <Plus className="w-5 h-5" />
                   Add Friend
                 </motion.button>
+
+                {/* Mobile: User Avatar */}
+                <motion.div
+                  className="md:hidden cursor-pointer"
+                  whileTap={{ scale: 0.95 }}
+                  onClick={handleCopyId}
+                >
+                  <ColorAvatar
+                    name={user.displayName}
+                    color={user.avatarColor}
+                    size="sm"
+                    showBorder
+                    borderGradient={user.colorTheme.gradient}
+                  />
+                </motion.div>
               </div>
             </div>
+
+            {/* Mobile Search Bar (expandable) */}
+            <AnimatePresence>
+              {mobileMenuOpen && (
+                <motion.div
+                  initial={{ height: 0, opacity: 0 }}
+                  animate={{ height: 'auto', opacity: 1 }}
+                  exit={{ height: 0, opacity: 0 }}
+                  className="sm:hidden mt-3 overflow-hidden"
+                >
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-white/40" />
+                    <input
+                      type="text"
+                      placeholder="Search friends..."
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      className="w-full pl-9 pr-4 py-2.5 bg-white/10 border border-white/20 rounded-xl text-white text-sm placeholder-white/40 focus:outline-none focus:border-purple-500"
+                    />
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
           </motion.div>
 
           {/* Content Area */}
-          <div className="flex-1 overflow-y-auto p-6">
+          <div className="flex-1 overflow-y-auto p-4 md:p-6 pb-24 md:pb-6">
             <AnimatePresence mode="wait">
               {activeTab === 'friends' && (
                 <motion.div
@@ -686,18 +793,36 @@ export function Dashboard({ onLogout }: DashboardProps) {
         </div>
       </div>
 
-      {/* FAB */}
-      <motion.button
-        onClick={() => setShowAddFriend(true)}
-        className={`fixed bottom-6 right-6 w-16 h-16 rounded-2xl bg-gradient-to-r ${user.colorTheme.gradient} flex items-center justify-center text-white shadow-2xl z-40`}
-        whileHover={{ scale: 1.1, rotate: 90 }}
-        whileTap={{ scale: 0.9 }}
-        initial={{ scale: 0 }}
-        animate={{ scale: 1 }}
-        transition={{ delay: 0.5, type: 'spring' }}
-      >
-        <Plus className="w-8 h-8" />
-      </motion.button>
+      {/* FABs - Hidden on mobile (using bottom nav instead) */}
+      <div className="hidden md:flex fixed bottom-6 right-6 flex-col gap-3 z-40">
+        {/* Group Call FAB */}
+        <motion.button
+          onClick={() => setShowGroupCall(true)}
+          className="w-14 h-14 rounded-2xl bg-gradient-to-r from-green-500 to-emerald-500 flex items-center justify-center text-white shadow-2xl"
+          whileHover={{ scale: 1.1 }}
+          whileTap={{ scale: 0.9 }}
+          initial={{ scale: 0 }}
+          animate={{ scale: 1 }}
+          transition={{ delay: 0.6, type: 'spring' }}
+          title="Start Group Call"
+        >
+          <UsersRound className="w-6 h-6" />
+        </motion.button>
+
+        {/* Add Friend FAB */}
+        <motion.button
+          onClick={() => setShowAddFriend(true)}
+          className={`w-16 h-16 rounded-2xl bg-gradient-to-r ${user.colorTheme.gradient} flex items-center justify-center text-white shadow-2xl`}
+          whileHover={{ scale: 1.1, rotate: 90 }}
+          whileTap={{ scale: 0.9 }}
+          initial={{ scale: 0 }}
+          animate={{ scale: 1 }}
+          transition={{ delay: 0.5, type: 'spring' }}
+          title="Add Friend"
+        >
+          <Plus className="w-8 h-8" />
+        </motion.button>
+      </div>
     </div>
   );
 }
