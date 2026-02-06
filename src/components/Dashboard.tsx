@@ -53,6 +53,7 @@ export function Dashboard({ onLogout }: DashboardProps) {
     toggleScreenShare,
     currentCallTargets,
     addFriend,
+    removeFriend,
     copyUserIdToClipboard,
     playSound,
     isConnected,
@@ -146,6 +147,7 @@ export function Dashboard({ onLogout }: DashboardProps) {
         friend={activeChat}
         onBack={() => setActiveChat(null)}
         onCall={(video) => handleStartCall(activeChat, video)}
+        onRemoveFriend={removeFriend}
       />
     );
   }
@@ -487,6 +489,7 @@ export function Dashboard({ onLogout }: DashboardProps) {
                                   friend={friend}
                                   onChat={() => setActiveChat(friend)}
                                   onCall={(video) => handleStartCall(friend, video)}
+                                  onRemove={removeFriend}
                                 />
                               </motion.div>
                             ))}
@@ -513,6 +516,7 @@ export function Dashboard({ onLogout }: DashboardProps) {
                                   friend={friend}
                                   onChat={() => setActiveChat(friend)}
                                   onCall={(video) => handleStartCall(friend, video)}
+                                  onRemove={removeFriend}
                                 />
                               </motion.div>
                             ))}
