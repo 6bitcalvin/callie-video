@@ -9,21 +9,26 @@ const ICE_SERVERS: RTCConfiguration = {
     { urls: 'stun:stun.l.google.com:19302' },
     { urls: 'stun:stun1.l.google.com:19302' },
     { urls: 'stun:stun2.l.google.com:19302' },
+    { urls: 'stun:stun3.l.google.com:19302' },
+    { urls: 'stun:stun4.l.google.com:19302' },
   ],
+};
+
+type UserInfo = {
+  displayName: string;
+  avatarColor: string;
+  colorTheme: string;
 };
 
 type IncomingCallData = {
   from: string;
   roomId: string;
   isVideo: boolean;
-  fromUser: {
-    displayName: string;
-    avatarColor: string;
-    colorTheme: string;
-  };
+  participants: string[];
+  fromUser: UserInfo;
 };
 
-export function useWebRTC(userId: string, userInfo?: { displayName: string; avatarColor: string; colorTheme: string }) {
+export function useWebRTC(myUserId: string, myUserInfo?: UserInfo) {
   const [callState, setCallState] = useState<CallState>('idle');
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
   const [remoteStreams, setRemoteStreams] = useState<Map<string, MediaStream>>(new Map());
@@ -35,14 +40,16 @@ export function useWebRTC(userId: string, userInfo?: { displayName: string; avat
   const [currentCallTargets, setCurrentCallTargets] = useState<string[]>([]);
   const [isVideoCall, setIsVideoCall] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [connectedPeers, setConnectedPeers] = useState<Set<string>>(new Set());
 
   const peerConnections = useRef<Map<string, RTCPeerConnection>>(new Map());
   const callChannelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
   const pendingCandidates = useRef<Map<string, RTCIceCandidateInit[]>>(new Map());
   const callStateRef = useRef<CallState>('idle');
   const localStreamRef = useRef<MediaStream | null>(null);
+  const allParticipantsRef = useRef<string[]>([]);
+  const hasCreatedOfferFor = useRef<Set<string>>(new Set());
 
-  // Keep refs in sync with state
   useEffect(() => {
     callStateRef.current = callState;
   }, [callState]);
@@ -51,19 +58,31 @@ export function useWebRTC(userId: string, userInfo?: { displayName: string; avat
     localStreamRef.current = localStream;
   }, [localStream]);
 
-  // Initialize media devices
   const initializeMedia = useCallback(async (video: boolean = true, audio: boolean = true) => {
     try {
       setError(null);
       console.log('Initializing media - video:', video, 'audio:', audio);
       
+      // Detect if mobile device
+      const isMobile = window.innerWidth < 768 || /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+      
+      // Set video constraints based on device type
+      // Mobile: Portrait orientation (taller than wide)
+      // Desktop: Landscape orientation (wider than tall)
+      const videoConstraints = video ? {
+        width: isMobile ? { ideal: 720 } : { ideal: 1280 },
+        height: isMobile ? { ideal: 1280 } : { ideal: 720 },
+        facingMode: 'user',
+        aspectRatio: isMobile ? { ideal: 9/16 } : { ideal: 16/9 }
+      } : false;
+      
       const constraints: MediaStreamConstraints = {
-        video: video ? { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: 'user' } : false,
+        video: videoConstraints,
         audio: audio ? { echoCancellation: true, noiseSuppression: true } : false,
       };
       
       const stream = await navigator.mediaDevices.getUserMedia(constraints);
-      console.log('Got media stream:', stream.id);
+      console.log('Got media stream:', stream.id, 'isMobile:', isMobile);
       setLocalStream(stream);
       localStreamRef.current = stream;
       return stream;
@@ -74,18 +93,21 @@ export function useWebRTC(userId: string, userInfo?: { displayName: string; avat
     }
   }, []);
 
-  // Create peer connection for a specific peer
   const createPeerConnection = useCallback((peerId: string, stream: MediaStream, roomId: string): RTCPeerConnection => {
-    console.log('Creating peer connection for:', peerId);
+    const existingPc = peerConnections.current.get(peerId);
+    if (existingPc && existingPc.connectionState !== 'closed' && existingPc.connectionState !== 'failed') {
+      console.log('Reusing existing peer connection for:', peerId);
+      return existingPc;
+    }
+
+    console.log('Creating NEW peer connection for:', peerId);
     const pc = new RTCPeerConnection(ICE_SERVERS);
 
-    // Add local tracks
     stream.getTracks().forEach((track) => {
-      console.log('Adding track:', track.kind);
+      console.log('Adding track to peer', peerId, ':', track.kind);
       pc.addTrack(track, stream);
     });
 
-    // Handle ICE candidates
     pc.onicecandidate = (event) => {
       if (event.candidate && callChannelRef.current) {
         console.log('Sending ICE candidate to:', peerId);
@@ -94,7 +116,7 @@ export function useWebRTC(userId: string, userInfo?: { displayName: string; avat
           event: 'signal',
           payload: {
             type: 'ice-candidate',
-            from: userId,
+            from: myUserId,
             to: peerId,
             roomId: roomId,
             payload: event.candidate.toJSON(),
@@ -103,7 +125,6 @@ export function useWebRTC(userId: string, userInfo?: { displayName: string; avat
       }
     };
 
-    // Handle remote tracks
     pc.ontrack = (event) => {
       console.log('Received remote track from:', peerId, 'kind:', event.track.kind);
       const [remoteStream] = event.streams;
@@ -114,10 +135,10 @@ export function useWebRTC(userId: string, userInfo?: { displayName: string; avat
       });
     };
 
-    // Handle connection state changes
     pc.onconnectionstatechange = () => {
-      console.log(`Connection state with ${peerId}:`, pc.connectionState);
+      console.log('Connection state with ' + peerId + ':', pc.connectionState);
       if (pc.connectionState === 'connected') {
+        setConnectedPeers(prev => new Set([...prev, peerId]));
         setCallState('connected');
       } else if (pc.connectionState === 'disconnected' || pc.connectionState === 'failed' || pc.connectionState === 'closed') {
         handlePeerDisconnect(peerId);
@@ -125,14 +146,13 @@ export function useWebRTC(userId: string, userInfo?: { displayName: string; avat
     };
 
     pc.oniceconnectionstatechange = () => {
-      console.log(`ICE connection state with ${peerId}:`, pc.iceConnectionState);
+      console.log('ICE connection state with ' + peerId + ':', pc.iceConnectionState);
     };
 
     peerConnections.current.set(peerId, pc);
     return pc;
-  }, [userId]);
+  }, [myUserId]);
 
-  // Handle peer disconnect
   const handlePeerDisconnect = useCallback((peerId: string) => {
     console.log('Peer disconnected:', peerId);
     const pc = peerConnections.current.get(peerId);
@@ -145,13 +165,18 @@ export function useWebRTC(userId: string, userInfo?: { displayName: string; avat
       newMap.delete(peerId);
       return newMap;
     });
+    setConnectedPeers(prev => {
+      const newSet = new Set(prev);
+      newSet.delete(peerId);
+      return newSet;
+    });
     pendingCandidates.current.delete(peerId);
+    hasCreatedOfferFor.current.delete(peerId);
   }, []);
 
-  // Add pending ICE candidates
   const addPendingCandidates = useCallback(async (peerId: string, pc: RTCPeerConnection) => {
     const candidates = pendingCandidates.current.get(peerId);
-    if (candidates) {
+    if (candidates && candidates.length > 0) {
       console.log('Adding', candidates.length, 'pending ICE candidates for:', peerId);
       for (const candidate of candidates) {
         try {
@@ -164,11 +189,9 @@ export function useWebRTC(userId: string, userInfo?: { displayName: string; avat
     }
   }, []);
 
-  // End call
   const endCall = useCallback(() => {
     console.log('Ending call');
     
-    // Send end signal to all peers
     peerConnections.current.forEach((pc, peerId) => {
       if (callChannelRef.current && currentRoomId) {
         callChannelRef.current.send({
@@ -176,7 +199,7 @@ export function useWebRTC(userId: string, userInfo?: { displayName: string; avat
           event: 'signal',
           payload: {
             type: 'call-end',
-            from: userId,
+            from: myUserId,
             to: peerId,
             roomId: currentRoomId,
           } as SignalingMessage,
@@ -186,13 +209,13 @@ export function useWebRTC(userId: string, userInfo?: { displayName: string; avat
     });
     peerConnections.current.clear();
     pendingCandidates.current.clear();
+    hasCreatedOfferFor.current.clear();
+    allParticipantsRef.current = [];
 
-    // Stop local stream
     if (localStreamRef.current) {
       localStreamRef.current.getTracks().forEach((track) => track.stop());
     }
 
-    // Cleanup channel
     if (callChannelRef.current) {
       supabase.removeChannel(callChannelRef.current);
       callChannelRef.current = null;
@@ -208,53 +231,89 @@ export function useWebRTC(userId: string, userInfo?: { displayName: string; avat
     setIsMuted(false);
     setIsCameraOff(false);
     setError(null);
-  }, [userId, currentRoomId]);
+    setConnectedPeers(new Set());
+  }, [myUserId, currentRoomId]);
 
-  // Setup call channel for signaling
-  const setupCallChannel = useCallback((roomId: string, _stream: MediaStream) => {
+  const createAndSendOffer = useCallback(async (peerId: string, pc: RTCPeerConnection, roomId: string) => {
+    if (hasCreatedOfferFor.current.has(peerId)) {
+      console.log('Already created offer for:', peerId);
+      return;
+    }
+    hasCreatedOfferFor.current.add(peerId);
+
+    try {
+      console.log('Creating offer for:', peerId);
+      const offer = await pc.createOffer();
+      await pc.setLocalDescription(offer);
+      console.log('Sending offer to:', peerId);
+
+      callChannelRef.current?.send({
+        type: 'broadcast',
+        event: 'signal',
+        payload: {
+          type: 'offer',
+          from: myUserId,
+          to: peerId,
+          roomId,
+          payload: offer,
+        } as SignalingMessage,
+      });
+    } catch (err) {
+      console.error('Error creating offer:', err);
+      hasCreatedOfferFor.current.delete(peerId);
+    }
+  }, [myUserId]);
+
+  const setupCallChannel = useCallback((roomId: string) => {
     console.log('Setting up call channel for room:', roomId);
     
-    const channel = supabase.channel(`call:${roomId}`, {
+    if (callChannelRef.current) {
+      supabase.removeChannel(callChannelRef.current);
+    }
+
+    const channel = supabase.channel('call:' + roomId, {
       config: { broadcast: { self: false } }
     });
 
     channel.on('broadcast', { event: 'signal' }, async ({ payload }) => {
       const signal = payload as SignalingMessage;
-      if (signal.to !== userId) return;
+      
+      if (signal.to !== myUserId) return;
 
       console.log('Received signal:', signal.type, 'from:', signal.from);
+
+      const currentStream = localStreamRef.current;
 
       switch (signal.type) {
         case 'call-accept': {
           console.log('Call accepted by:', signal.from);
           setCallState('connecting');
           
-          const currentStream = localStreamRef.current;
           if (!currentStream) {
             console.error('No local stream available');
             return;
           }
           
           const pc = createPeerConnection(signal.from, currentStream, roomId);
-          
-          try {
-            const offer = await pc.createOffer();
-            await pc.setLocalDescription(offer);
-            console.log('Sending offer to:', signal.from);
+          await createAndSendOffer(signal.from, pc, roomId);
+          break;
+        }
 
-            channel.send({
-              type: 'broadcast',
-              event: 'signal',
-              payload: {
-                type: 'offer',
-                from: userId,
-                to: signal.from,
-                roomId,
-                payload: offer,
-              } as SignalingMessage,
-            });
-          } catch (err) {
-            console.error('Error creating offer:', err);
+        case 'participant-joined': {
+          const newParticipantId = signal.from;
+          console.log('New participant joined:', newParticipantId);
+          
+          if (!currentStream) {
+            console.error('No local stream available');
+            return;
+          }
+
+          if (myUserId < newParticipantId) {
+            console.log('I will create offer to new participant:', newParticipantId);
+            const pc = createPeerConnection(newParticipantId, currentStream, roomId);
+            await createAndSendOffer(newParticipantId, pc, roomId);
+          } else {
+            console.log('Waiting for offer from new participant:', newParticipantId);
           }
           break;
         }
@@ -262,15 +321,32 @@ export function useWebRTC(userId: string, userInfo?: { displayName: string; avat
         case 'offer': {
           console.log('Received offer from:', signal.from);
           
-          const currentStream = localStreamRef.current;
           if (!currentStream) {
             console.error('No local stream for answering');
             return;
           }
           
-          const pc = peerConnections.current.get(signal.from) || createPeerConnection(signal.from, currentStream, roomId);
+          let pc = peerConnections.current.get(signal.from);
+          if (!pc || pc.connectionState === 'closed' || pc.connectionState === 'failed') {
+            pc = createPeerConnection(signal.from, currentStream, roomId);
+          }
           
           try {
+            if (pc.signalingState !== 'stable' && pc.signalingState !== 'have-local-offer') {
+              console.log('Ignoring offer, signaling state is:', pc.signalingState);
+              return;
+            }
+
+            if (pc.signalingState === 'have-local-offer') {
+              if (myUserId > signal.from) {
+                console.log('Glare detected, rolling back my offer');
+                await pc.setLocalDescription({ type: 'rollback' });
+              } else {
+                console.log('Glare detected, ignoring incoming offer');
+                return;
+              }
+            }
+
             await pc.setRemoteDescription(new RTCSessionDescription(signal.payload as RTCSessionDescriptionInit));
             await addPendingCandidates(signal.from, pc);
             
@@ -283,7 +359,7 @@ export function useWebRTC(userId: string, userInfo?: { displayName: string; avat
               event: 'signal',
               payload: {
                 type: 'answer',
-                from: userId,
+                from: myUserId,
                 to: signal.from,
                 roomId,
                 payload: answer,
@@ -300,8 +376,12 @@ export function useWebRTC(userId: string, userInfo?: { displayName: string; avat
           const pc = peerConnections.current.get(signal.from);
           if (pc && signal.payload) {
             try {
-              await pc.setRemoteDescription(new RTCSessionDescription(signal.payload as RTCSessionDescriptionInit));
-              await addPendingCandidates(signal.from, pc);
+              if (pc.signalingState === 'have-local-offer') {
+                await pc.setRemoteDescription(new RTCSessionDescription(signal.payload as RTCSessionDescriptionInit));
+                await addPendingCandidates(signal.from, pc);
+              } else {
+                console.log('Ignoring answer, signaling state is:', pc.signalingState);
+              }
             } catch (err) {
               console.error('Error setting remote description:', err);
             }
@@ -312,14 +392,13 @@ export function useWebRTC(userId: string, userInfo?: { displayName: string; avat
         case 'ice-candidate': {
           const pc = peerConnections.current.get(signal.from);
           if (pc && signal.payload) {
-            if (pc.remoteDescription) {
+            if (pc.remoteDescription && pc.remoteDescription.type) {
               try {
                 await pc.addIceCandidate(new RTCIceCandidate(signal.payload as RTCIceCandidateInit));
               } catch (err) {
                 console.error('Error adding ICE candidate:', err);
               }
             } else {
-              // Queue the candidate
               if (!pendingCandidates.current.has(signal.from)) {
                 pendingCandidates.current.set(signal.from, []);
               }
@@ -334,7 +413,6 @@ export function useWebRTC(userId: string, userInfo?: { displayName: string; avat
         case 'call-end': {
           console.log('Call ended/rejected by:', signal.from);
           handlePeerDisconnect(signal.from);
-          // Check if all peers disconnected
           if (peerConnections.current.size === 0) {
             endCall();
           }
@@ -349,9 +427,8 @@ export function useWebRTC(userId: string, userInfo?: { displayName: string; avat
 
     callChannelRef.current = channel;
     return channel;
-  }, [userId, createPeerConnection, handlePeerDisconnect, addPendingCandidates, endCall]);
+  }, [myUserId, createPeerConnection, handlePeerDisconnect, addPendingCandidates, endCall, createAndSendOffer]);
 
-  // Initiate a call
   const initiateCall = useCallback(async (targetUserIds: string[], video: boolean = true) => {
     if (callStateRef.current !== 'idle') {
       console.warn('Already in a call');
@@ -361,8 +438,11 @@ export function useWebRTC(userId: string, userInfo?: { displayName: string; avat
     console.log('Initiating call to:', targetUserIds, 'video:', video);
     
     const roomId = uuidv4();
+    const allParticipants = [myUserId, ...targetUserIds];
+    
     setCurrentRoomId(roomId);
     setCurrentCallTargets(targetUserIds);
+    allParticipantsRef.current = allParticipants;
     setIsVideoCall(video);
     setCallState('ringing');
 
@@ -373,15 +453,12 @@ export function useWebRTC(userId: string, userInfo?: { displayName: string; avat
       return;
     }
 
-    // Setup call channel
-    setupCallChannel(roomId, stream);
+    setupCallChannel(roomId);
 
-    // Send call invites to all targets via their personal channels
     for (const targetId of targetUserIds) {
       console.log('Sending call invite to:', targetId);
       
-      // Use a dedicated channel for the call invite
-      const inviteChannel = supabase.channel(`user-calls:${targetId}`, {
+      const inviteChannel = supabase.channel('user-calls:' + targetId + ':' + Date.now(), {
         config: { broadcast: { self: false } }
       });
 
@@ -394,32 +471,30 @@ export function useWebRTC(userId: string, userInfo?: { displayName: string; avat
             event: 'call-invite',
             payload: {
               type: 'call-invite',
-              from: userId,
+              from: myUserId,
               to: targetId,
               roomId,
               isVideo: video,
-              fromUser: userInfo,
+              participants: allParticipants,
+              fromUser: myUserInfo,
             } as SignalingMessage,
           });
           
-          // Keep channel open for a bit then cleanup
           setTimeout(() => {
             supabase.removeChannel(inviteChannel);
-          }, 5000);
+          }, 3000);
         }
       });
     }
 
-    // Timeout for call (30 seconds)
     setTimeout(() => {
       if (callStateRef.current === 'ringing') {
         console.log('Call timeout - no answer');
         endCall();
       }
-    }, 30000);
-  }, [userId, userInfo, initializeMedia, setupCallChannel, endCall]);
+    }, 45000);
+  }, [myUserId, myUserInfo, initializeMedia, setupCallChannel, endCall]);
 
-  // Accept incoming call
   const acceptCall = useCallback(async () => {
     if (!incomingCall) {
       console.error('No incoming call to accept');
@@ -427,10 +502,15 @@ export function useWebRTC(userId: string, userInfo?: { displayName: string; avat
     }
 
     console.log('Accepting call from:', incomingCall.from);
+    console.log('All participants in call:', incomingCall.participants);
     
-    const { from, roomId, isVideo } = incomingCall;
+    const { from, roomId, isVideo, participants } = incomingCall;
+    
+    const otherParticipants = participants.filter(p => p !== myUserId);
+    allParticipantsRef.current = participants;
+    
     setCurrentRoomId(roomId);
-    setCurrentCallTargets([from]);
+    setCurrentCallTargets(otherParticipants);
     setIsVideoCall(isVideo);
     setCallState('connecting');
     setIncomingCall(null);
@@ -442,32 +522,45 @@ export function useWebRTC(userId: string, userInfo?: { displayName: string; avat
       return;
     }
 
-    // Setup call channel
-    const channel = setupCallChannel(roomId, stream);
+    const channel = setupCallChannel(roomId);
 
-    // Wait for channel to be ready, then send accept
-    setTimeout(() => {
-      console.log('Sending call-accept to:', from);
-      channel.send({
-        type: 'broadcast',
-        event: 'signal',
-        payload: {
-          type: 'call-accept',
-          from: userId,
-          to: from,
-          roomId,
-        } as SignalingMessage,
-      });
-    }, 500);
-  }, [incomingCall, userId, initializeMedia, setupCallChannel]);
+    await new Promise(resolve => setTimeout(resolve, 800));
 
-  // Reject incoming call
+    console.log('Sending call-accept to caller:', from);
+    channel.send({
+      type: 'broadcast',
+      event: 'signal',
+      payload: {
+        type: 'call-accept',
+        from: myUserId,
+        to: from,
+        roomId,
+      } as SignalingMessage,
+    });
+
+    for (const participantId of otherParticipants) {
+      if (participantId !== from) {
+        console.log('Notifying participant that I joined:', participantId);
+        channel.send({
+          type: 'broadcast',
+          event: 'signal',
+          payload: {
+            type: 'participant-joined',
+            from: myUserId,
+            to: participantId,
+            roomId,
+          } as SignalingMessage,
+        });
+      }
+    }
+  }, [incomingCall, myUserId, initializeMedia, setupCallChannel]);
+
   const rejectCall = useCallback(async () => {
     if (!incomingCall) return;
 
     console.log('Rejecting call from:', incomingCall.from);
     
-    const rejectChannel = supabase.channel(`call:${incomingCall.roomId}`, {
+    const rejectChannel = supabase.channel('call:' + incomingCall.roomId, {
       config: { broadcast: { self: false } }
     });
 
@@ -478,7 +571,7 @@ export function useWebRTC(userId: string, userInfo?: { displayName: string; avat
           event: 'signal',
           payload: {
             type: 'call-reject',
-            from: userId,
+            from: myUserId,
             to: incomingCall.from,
             roomId: incomingCall.roomId,
           } as SignalingMessage,
@@ -491,9 +584,8 @@ export function useWebRTC(userId: string, userInfo?: { displayName: string; avat
     });
 
     setIncomingCall(null);
-  }, [incomingCall, userId]);
+  }, [incomingCall, myUserId]);
 
-  // Toggle mute
   const toggleMute = useCallback(() => {
     if (localStreamRef.current) {
       localStreamRef.current.getAudioTracks().forEach((track) => {
@@ -503,7 +595,6 @@ export function useWebRTC(userId: string, userInfo?: { displayName: string; avat
     }
   }, []);
 
-  // Toggle camera
   const toggleCamera = useCallback(() => {
     if (localStreamRef.current) {
       localStreamRef.current.getVideoTracks().forEach((track) => {
@@ -513,10 +604,8 @@ export function useWebRTC(userId: string, userInfo?: { displayName: string; avat
     }
   }, []);
 
-  // Toggle screen share
   const toggleScreenShare = useCallback(async () => {
     if (isScreenSharing) {
-      // Switch back to camera
       const stream = await initializeMedia(isVideoCall, true);
       if (stream) {
         const videoTrack = stream.getVideoTracks()[0];
@@ -546,7 +635,6 @@ export function useWebRTC(userId: string, userInfo?: { displayName: string; avat
           toggleScreenShare();
         };
 
-        // Keep audio from original stream
         if (localStreamRef.current) {
           const audioTrack = localStreamRef.current.getAudioTracks()[0];
           if (audioTrack) {
@@ -563,26 +651,24 @@ export function useWebRTC(userId: string, userInfo?: { displayName: string; avat
     }
   }, [isScreenSharing, isVideoCall, initializeMedia]);
 
-  // Listen for incoming calls on user's personal channel
   useEffect(() => {
-    if (!userId) return;
+    if (!myUserId) return;
 
-    console.log('Setting up incoming call listener for user:', userId);
+    console.log('Setting up incoming call listener for user:', myUserId);
     
-    const channel = supabase.channel(`user-calls:${userId}`, {
+    const channel = supabase.channel('user-calls:' + myUserId, {
       config: { broadcast: { self: false } }
     });
 
     channel.on('broadcast', { event: 'call-invite' }, ({ payload }) => {
       const signal = payload as SignalingMessage;
-      console.log('📞 INCOMING CALL:', signal);
+      console.log('INCOMING CALL:', signal);
       
-      if (signal.type === 'call-invite' && signal.to === userId) {
-        // If already in a call, send busy
+      if (signal.type === 'call-invite' && signal.to === myUserId) {
         if (callStateRef.current !== 'idle') {
           console.log('Already in call, sending busy signal');
           
-          const busyChannel = supabase.channel(`call:${signal.roomId}`, {
+          const busyChannel = supabase.channel('call:' + signal.roomId, {
             config: { broadcast: { self: false } }
           });
           
@@ -593,7 +679,7 @@ export function useWebRTC(userId: string, userInfo?: { displayName: string; avat
                 event: 'signal',
                 payload: {
                   type: 'call-busy',
-                  from: userId,
+                  from: myUserId,
                   to: signal.from,
                   roomId: signal.roomId,
                 } as SignalingMessage,
@@ -607,11 +693,12 @@ export function useWebRTC(userId: string, userInfo?: { displayName: string; avat
           return;
         }
 
-        console.log('📞 Setting incoming call state');
+        console.log('Setting incoming call state');
         setIncomingCall({
           from: signal.from,
           roomId: signal.roomId,
           isVideo: signal.isVideo ?? true,
+          participants: signal.participants || [signal.from, myUserId],
           fromUser: signal.fromUser || {
             displayName: 'Unknown Caller',
             avatarColor: '#8B5CF6',
@@ -629,19 +716,15 @@ export function useWebRTC(userId: string, userInfo?: { displayName: string; avat
       console.log('Cleaning up incoming call listener');
       supabase.removeChannel(channel);
     };
-  }, [userId]);
+  }, [myUserId]);
 
-  // Cleanup on unmount
   useEffect(() => {
     return () => {
-      // Stop local stream
       if (localStreamRef.current) {
         localStreamRef.current.getTracks().forEach((track) => track.stop());
       }
-      // Close all peer connections
       peerConnections.current.forEach((pc) => pc.close());
       peerConnections.current.clear();
-      // Remove call channel
       if (callChannelRef.current) {
         supabase.removeChannel(callChannelRef.current);
       }
@@ -659,6 +742,7 @@ export function useWebRTC(userId: string, userInfo?: { displayName: string; avat
     incomingCall,
     currentRoomId,
     currentCallTargets,
+    connectedPeers,
     error,
     initiateCall,
     acceptCall,

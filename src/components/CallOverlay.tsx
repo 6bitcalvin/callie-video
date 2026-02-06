@@ -36,6 +36,23 @@ type CallOverlayProps = {
 
 const callEmojis = ['👍', '👏', '❤️', '😂', '😮', '🔥', '🎉', '💯'];
 
+// Hook to detect mobile devices
+function useIsMobile() {
+  const [isMobile, setIsMobile] = useState(false);
+  
+  useEffect(() => {
+    const checkMobile = () => {
+      setIsMobile(window.innerWidth < 768 || /iPhone|iPad|iPod|Android/i.test(navigator.userAgent));
+    };
+    
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+    return () => window.removeEventListener('resize', checkMobile);
+  }, []);
+  
+  return isMobile;
+}
+
 function VideoTile({
   stream,
   participant,
@@ -43,6 +60,8 @@ function VideoTile({
   isMuted,
   isCameraOff,
   isMain,
+  isMobile,
+  participantCount,
 }: {
   stream: MediaStream | null;
   participant: Friend;
@@ -50,6 +69,8 @@ function VideoTile({
   isMuted?: boolean;
   isCameraOff?: boolean;
   isMain?: boolean;
+  isMobile?: boolean;
+  participantCount?: number;
 }) {
   const videoRef = useRef<HTMLVideoElement>(null);
 
@@ -59,11 +80,28 @@ function VideoTile({
     }
   }, [stream]);
 
+  // Determine aspect ratio based on device and participant count
+  const getAspectRatioClass = () => {
+    if (isMobile) {
+      // Mobile: Portrait-style videos
+      if (participantCount && participantCount <= 2) {
+        return 'aspect-[3/4]'; // Tall portrait for 1-2 people
+      }
+      return 'aspect-square'; // Square for 3+ people on mobile
+    }
+    // Desktop: Landscape videos
+    if (participantCount && participantCount <= 2) {
+      return 'aspect-video'; // 16:9 for 1-2 people
+    }
+    return 'aspect-[4/3]'; // 4:3 for 3+ people
+  };
+
   return (
     <motion.div
       className={cn(
-        'relative overflow-hidden rounded-3xl backdrop-blur-xl bg-slate-800 border border-white/20',
-        isMain ? 'col-span-2 row-span-2' : ''
+        'relative overflow-hidden rounded-2xl md:rounded-3xl backdrop-blur-xl bg-slate-800 border border-white/20',
+        isMain ? 'col-span-2 row-span-2' : '',
+        getAspectRatioClass()
       )}
       initial={{ opacity: 0, scale: 0.8 }}
       animate={{ opacity: 1, scale: 1 }}
@@ -85,14 +123,14 @@ function VideoTile({
           <ColorAvatar
             name={participant.displayName}
             color={participant.avatarColor}
-            size="xl"
+            size={isMobile ? 'lg' : 'xl'}
             showBorder
             borderGradient={participant.colorTheme.gradient}
             animate
           />
-          <p className="text-white font-medium mt-4">{isLocal ? 'You' : participant.displayName}</p>
+          <p className="text-white font-medium mt-2 md:mt-4 text-sm md:text-base">{isLocal ? 'You' : participant.displayName}</p>
           {isCameraOff && (
-            <p className="text-white/50 text-sm mt-1">Camera off</p>
+            <p className="text-white/50 text-xs md:text-sm mt-1">Camera off</p>
           )}
         </div>
       ) : (
@@ -101,23 +139,30 @@ function VideoTile({
           autoPlay
           playsInline
           muted={isLocal}
-          className="absolute inset-0 w-full h-full object-cover"
+          className={cn(
+            "absolute inset-0 w-full h-full",
+            isMobile ? "object-cover" : "object-cover"
+          )}
+          style={{
+            // Mirror local video for selfie view
+            transform: isLocal ? 'scaleX(-1)' : 'none'
+          }}
         />
       )}
 
       {/* Participant Info */}
-      <div className="absolute bottom-4 left-4 right-4 flex items-center justify-between">
-        <div className="flex items-center gap-2 backdrop-blur-md bg-black/30 rounded-full px-3 py-1.5">
-          <span className="text-white text-sm font-medium">
+      <div className="absolute bottom-2 md:bottom-4 left-2 md:left-4 right-2 md:right-4 flex items-center justify-between">
+        <div className="flex items-center gap-1.5 md:gap-2 backdrop-blur-md bg-black/30 rounded-full px-2 md:px-3 py-1 md:py-1.5">
+          <span className="text-white text-xs md:text-sm font-medium truncate max-w-[80px] md:max-w-none">
             {isLocal ? 'You' : participant.displayName}
           </span>
-          {isMuted && <MicOff className="w-4 h-4 text-red-400" />}
+          {isMuted && <MicOff className="w-3 md:w-4 h-3 md:h-4 text-red-400" />}
         </div>
       </div>
 
       {/* Speaking Indicator */}
       <motion.div
-        className="absolute inset-0 border-4 rounded-3xl pointer-events-none"
+        className="absolute inset-0 border-2 md:border-4 rounded-2xl md:rounded-3xl pointer-events-none"
         animate={{
           borderColor: ['rgba(139, 92, 246, 0)', 'rgba(139, 92, 246, 0.5)', 'rgba(139, 92, 246, 0)'],
         }}
@@ -164,6 +209,8 @@ export function CallOverlay({
   const [showChat, setShowChat] = useState(false);
   const [callDuration, setCallDuration] = useState(0);
   const [layout, setLayout] = useState<'grid' | 'spotlight'>('grid');
+  const isMobile = useIsMobile();
+  const totalParticipants = participants.length + 1;
 
   useEffect(() => {
     if (callState === 'connected') {
@@ -181,11 +228,18 @@ export function CallOverlay({
   };
 
   const getGridClass = () => {
-    const count = participants.length + 1;
+    const count = totalParticipants;
+    if (isMobile) {
+      // Mobile: Stack vertically for 1-2, 2x2 grid for more
+      if (count === 1) return 'grid-cols-1';
+      if (count === 2) return 'grid-cols-1 gap-2';
+      return 'grid-cols-2 gap-2';
+    }
+    // Desktop: Side by side for 2, grid for more
     if (count === 1) return 'grid-cols-1';
-    if (count === 2) return 'grid-cols-1 md:grid-cols-2';
+    if (count === 2) return 'grid-cols-2';
     if (count <= 4) return 'grid-cols-2 grid-rows-2';
-    return 'grid-cols-2 md:grid-cols-3 grid-rows-2';
+    return 'grid-cols-3 grid-rows-2';
   };
 
   if (!user) return null;
@@ -302,8 +356,17 @@ export function CallOverlay({
 
       {/* Video Grid */}
       {callState === 'connected' && (
-        <div className="relative h-full pt-14 md:pt-16 pb-24 md:pb-28 px-2 md:px-4">
-          <div className={cn('h-full gap-2 md:gap-4', layout === 'grid' ? `grid ${getGridClass()}` : 'flex')}>
+        <div className={cn(
+          "relative h-full px-2 md:px-4",
+          isMobile ? "pt-16 pb-28" : "pt-16 pb-28",
+          isMobile && totalParticipants === 2 ? "flex flex-col justify-center" : ""
+        )}>
+          <div className={cn(
+            layout === 'grid' ? `grid ${getGridClass()}` : 'flex',
+            isMobile ? 'gap-2 h-auto' : 'gap-4 h-full',
+            isMobile && totalParticipants === 2 ? 'max-h-[80vh]' : '',
+            'place-items-center justify-center'
+          )}>
             {/* Local Video */}
             <VideoTile
               stream={localStream}
@@ -312,6 +375,8 @@ export function CallOverlay({
               isMuted={isMuted}
               isCameraOff={isCameraOff}
               isMain={layout === 'spotlight' && participants.length === 0}
+              isMobile={isMobile}
+              participantCount={totalParticipants}
             />
 
             {/* Remote Videos */}
@@ -323,6 +388,8 @@ export function CallOverlay({
                 isMuted={false}
                 isCameraOff={!remoteStreams.has(participant.id)}
                 isMain={layout === 'spotlight' && index === 0}
+                isMobile={isMobile}
+                participantCount={totalParticipants}
               />
             ))}
           </div>
@@ -398,12 +465,12 @@ export function CallOverlay({
       <AnimatePresence>
         {showEmojiPicker && (
           <motion.div
-            className="absolute bottom-32 left-1/2 -translate-x-1/2 backdrop-blur-xl bg-black/50 rounded-2xl p-4 border border-white/20"
+            className="absolute bottom-24 md:bottom-32 left-1/2 -translate-x-1/2 backdrop-blur-xl bg-black/50 rounded-2xl p-3 md:p-4 border border-white/20 mx-2"
             initial={{ opacity: 0, y: 20, scale: 0.9 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 20, scale: 0.9 }}
           >
-            <div className="flex gap-3">
+            <div className="flex gap-2 md:gap-3 flex-wrap justify-center">
               {callEmojis.map((emoji) => (
                 <motion.button
                   key={emoji}
@@ -411,7 +478,7 @@ export function CallOverlay({
                     addReaction(emoji);
                     setShowEmojiPicker(false);
                   }}
-                  className="text-3xl"
+                  className="text-2xl md:text-3xl p-1"
                   whileHover={{ scale: 1.3 }}
                   whileTap={{ scale: 0.9 }}
                 >
@@ -425,74 +492,77 @@ export function CallOverlay({
 
       {/* Bottom Controls */}
       <motion.div
-        className="absolute bottom-0 left-0 right-0 backdrop-blur-xl bg-black/30 px-6 py-6"
+        className="absolute bottom-0 left-0 right-0 backdrop-blur-xl bg-black/30 px-3 md:px-6 py-4 md:py-6 safe-area-pb"
         initial={{ y: 20, opacity: 0 }}
         animate={{ y: 0, opacity: 1 }}
       >
-        <div className="flex items-center justify-center gap-4">
+        <div className="flex items-center justify-center gap-2 md:gap-4">
           <motion.button
             onClick={onToggleMute}
             className={cn(
-              'w-14 h-14 rounded-2xl flex items-center justify-center transition-all',
+              'w-12 h-12 md:w-14 md:h-14 rounded-xl md:rounded-2xl flex items-center justify-center transition-all',
               isMuted ? 'bg-red-500 text-white' : 'bg-white/10 text-white hover:bg-white/20'
             )}
             whileHover={{ scale: 1.1 }}
             whileTap={{ scale: 0.9 }}
           >
-            {isMuted ? <MicOff className="w-6 h-6" /> : <Mic className="w-6 h-6" />}
+            {isMuted ? <MicOff className="w-5 h-5 md:w-6 md:h-6" /> : <Mic className="w-5 h-5 md:w-6 md:h-6" />}
           </motion.button>
 
           <motion.button
             onClick={onToggleCamera}
             className={cn(
-              'w-14 h-14 rounded-2xl flex items-center justify-center transition-all',
+              'w-12 h-12 md:w-14 md:h-14 rounded-xl md:rounded-2xl flex items-center justify-center transition-all',
               isCameraOff ? 'bg-red-500 text-white' : 'bg-white/10 text-white hover:bg-white/20'
             )}
             whileHover={{ scale: 1.1 }}
             whileTap={{ scale: 0.9 }}
           >
-            {isCameraOff ? <VideoOff className="w-6 h-6" /> : <Video className="w-6 h-6" />}
+            {isCameraOff ? <VideoOff className="w-5 h-5 md:w-6 md:h-6" /> : <Video className="w-5 h-5 md:w-6 md:h-6" />}
           </motion.button>
 
-          <motion.button
-            onClick={onToggleScreenShare}
-            className={cn(
-              'w-14 h-14 rounded-2xl flex items-center justify-center transition-all',
-              isScreenSharing
-                ? 'bg-gradient-to-r from-purple-500 to-pink-500 text-white'
-                : 'bg-white/10 text-white hover:bg-white/20'
-            )}
-            whileHover={{ scale: 1.1 }}
-            whileTap={{ scale: 0.9 }}
-          >
-            {isScreenSharing ? <ScreenShareOff className="w-6 h-6" /> : <ScreenShare className="w-6 h-6" />}
-          </motion.button>
+          {/* Hide screen share on mobile since it's not well supported */}
+          {!isMobile && (
+            <motion.button
+              onClick={onToggleScreenShare}
+              className={cn(
+                'w-12 h-12 md:w-14 md:h-14 rounded-xl md:rounded-2xl flex items-center justify-center transition-all',
+                isScreenSharing
+                  ? 'bg-gradient-to-r from-purple-500 to-pink-500 text-white'
+                  : 'bg-white/10 text-white hover:bg-white/20'
+              )}
+              whileHover={{ scale: 1.1 }}
+              whileTap={{ scale: 0.9 }}
+            >
+              {isScreenSharing ? <ScreenShareOff className="w-5 h-5 md:w-6 md:h-6" /> : <ScreenShare className="w-5 h-5 md:w-6 md:h-6" />}
+            </motion.button>
+          )}
 
           <motion.button
             onClick={() => setShowEmojiPicker(!showEmojiPicker)}
-            className="w-14 h-14 rounded-2xl bg-white/10 flex items-center justify-center text-white hover:bg-white/20 transition-all"
+            className="w-12 h-12 md:w-14 md:h-14 rounded-xl md:rounded-2xl bg-white/10 flex items-center justify-center text-white hover:bg-white/20 transition-all"
             whileHover={{ scale: 1.1 }}
             whileTap={{ scale: 0.9 }}
           >
-            <Smile className="w-6 h-6" />
+            <Smile className="w-5 h-5 md:w-6 md:h-6" />
           </motion.button>
 
           <motion.button
             onClick={() => setShowChat(!showChat)}
-            className="w-14 h-14 rounded-2xl bg-white/10 flex items-center justify-center text-white hover:bg-white/20 transition-all"
+            className="w-12 h-12 md:w-14 md:h-14 rounded-xl md:rounded-2xl bg-white/10 flex items-center justify-center text-white hover:bg-white/20 transition-all"
             whileHover={{ scale: 1.1 }}
             whileTap={{ scale: 0.9 }}
           >
-            <MessageCircle className="w-6 h-6" />
+            <MessageCircle className="w-5 h-5 md:w-6 md:h-6" />
           </motion.button>
 
           <motion.button
             onClick={onEndCall}
-            className="w-20 h-14 rounded-2xl bg-gradient-to-r from-red-500 to-rose-600 flex items-center justify-center text-white shadow-lg shadow-red-500/25"
+            className="w-14 h-12 md:w-20 md:h-14 rounded-xl md:rounded-2xl bg-gradient-to-r from-red-500 to-rose-600 flex items-center justify-center text-white shadow-lg shadow-red-500/25"
             whileHover={{ scale: 1.1 }}
             whileTap={{ scale: 0.9 }}
           >
-            <PhoneOff className="w-6 h-6" />
+            <PhoneOff className="w-5 h-5 md:w-6 md:h-6" />
           </motion.button>
         </div>
       </motion.div>

@@ -36,7 +36,7 @@ type AppContextType = {
   isCameraOff: boolean;
   isScreenSharing: boolean;
   isVideoCall: boolean;
-  incomingCall: { from: string; roomId: string; isVideo: boolean; fromUser: { displayName: string; avatarColor: string; colorTheme: string } } | null;
+  incomingCall: { from: string; roomId: string; isVideo: boolean; participants: string[]; fromUser: { displayName: string; avatarColor: string; colorTheme: string } } | null;
   initiateCall: (targetUserIds: string[], video: boolean) => Promise<void>;
   acceptCall: () => Promise<void>;
   rejectCall: () => Promise<void>;
@@ -319,7 +319,7 @@ export function AppProvider({ children, userProfile }: AppProviderProps) {
     chatChannelRef.current.send({
       type: 'broadcast',
       event: 'typing',
-      payload: { odisplayName: user.id },
+      payload: { odis_playName: user.id },
     });
 
     // Clear typing after 3 seconds of no activity
@@ -343,7 +343,7 @@ export function AppProvider({ children, userProfile }: AppProviderProps) {
 
     // Type for presence data
     type PresenceData = {
-      odisplayName?: string;
+      odis_playName?: string;
       username?: string;
       displayName?: string;
       avatarColor?: string;
@@ -360,10 +360,10 @@ export function AppProvider({ children, userProfile }: AppProviderProps) {
         if (presences && Array.isArray(presences) && presences.length > 0) {
           const presenceData = presences[0] as PresenceData;
           // The presence key IS the user id (we set it that way in config)
-          const odisplayName = presenceKey;
-          online.add(odisplayName);
-          userProfiles[odisplayName] = presenceData;
-          console.log(`Presence data for ${odisplayName}:`, presenceData);
+          const odis_playName = presenceKey;
+          online.add(odis_playName);
+          userProfiles[odis_playName] = presenceData;
+          console.log('Presence data for ' + odis_playName + ':', presenceData);
         }
       });
       
@@ -448,7 +448,7 @@ export function AppProvider({ children, userProfile }: AppProviderProps) {
         try {
           // Track presence with FULL user profile data so other users can see it
           const trackData = {
-            odisplayName: user.id,
+            odis_playName: user.id,
             username: user.username,
             displayName: user.displayName,
             avatarColor: user.avatarColor,
@@ -508,7 +508,7 @@ export function AppProvider({ children, userProfile }: AppProviderProps) {
     });
 
     channel.on('broadcast', { event: 'typing' }, ({ payload }) => {
-      if (payload.odisplayName !== user.id) {
+      if (payload.odis_playName !== user.id) {
         setFriendTyping(true);
         setTimeout(() => setFriendTyping(false), 3000);
       }

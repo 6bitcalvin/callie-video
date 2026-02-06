@@ -79,12 +79,13 @@ export async function testRealtimeConnection(): Promise<{ connected: boolean; er
 }
 
 export type SignalingMessage = {
-  type: 'offer' | 'answer' | 'ice-candidate' | 'call-invite' | 'call-accept' | 'call-reject' | 'call-end' | 'call-busy';
+  type: 'offer' | 'answer' | 'ice-candidate' | 'call-invite' | 'call-accept' | 'call-reject' | 'call-end' | 'call-busy' | 'participant-joined';
   from: string;
   to: string;
   roomId: string;
   payload?: RTCSessionDescriptionInit | RTCIceCandidateInit | null;
   isVideo?: boolean;
+  participants?: string[];
   fromUser?: {
     displayName: string;
     avatarColor: string;
