@@ -2,9 +2,7 @@ import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { User, Sparkles, ArrowRight, Check, Copy, Video, MessageCircle, Palette } from 'lucide-react';
 import { cn } from '@/utils/cn';
-import { colorThemes, ColorTheme } from '@/types';
-import { useApp } from '@/context/AppContext';
-import { v4 as uuidv4 } from 'uuid';
+import { colorThemes, ColorTheme, UserProfile } from '@/types';
 import { ColorAvatar } from './ColorAvatar';
 
 const avatarColors = [
@@ -12,31 +10,54 @@ const avatarColors = [
   '#3B82F6', '#6366F1', '#14B8A6', '#F97316', '#84CC16', '#A855F7',
 ];
 
-export function Onboarding() {
-  const { setUser, setIsOnboarded, playSound } = useApp();
+interface OnboardingProps {
+  onComplete: (profile: UserProfile) => void;
+  authUserId: string;
+  authEmail: string | null;
+}
+
+export function Onboarding({ onComplete, authUserId, authEmail }: OnboardingProps) {
   const [step, setStep] = useState(0);
   const [username, setUsername] = useState('');
   const [displayName, setDisplayName] = useState('');
   const [selectedTheme, setSelectedTheme] = useState<ColorTheme>(colorThemes[0]);
   const [selectedColor, setSelectedColor] = useState(avatarColors[0]);
   const [copied, setCopied] = useState(false);
-  const [generatedId] = useState(uuidv4());
+
+  const playSound = (sound: 'pop' | 'ring' | 'hangup' | 'message') => {
+    try {
+      const audioContext = new (window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)();
+      const oscillator = audioContext.createOscillator();
+      const gainNode = audioContext.createGain();
+      oscillator.connect(gainNode);
+      gainNode.connect(audioContext.destination);
+      
+      if (sound === 'pop') {
+        oscillator.frequency.value = 800;
+        gainNode.gain.value = 0.1;
+        oscillator.start();
+        oscillator.stop(audioContext.currentTime + 0.1);
+      }
+    } catch {
+      // Audio not supported
+    }
+  };
 
   const handleComplete = () => {
-    setUser({
-      id: generatedId,
+    const profile: UserProfile = {
+      id: authUserId,
       username,
       displayName: displayName || username,
       avatarColor: selectedColor,
       colorTheme: selectedTheme,
-      status: 'online',
-    });
-    setIsOnboarded(true);
+      email: authEmail || undefined,
+    };
     playSound('pop');
+    onComplete(profile);
   };
 
   const handleCopyId = () => {
-    navigator.clipboard.writeText(generatedId);
+    navigator.clipboard.writeText(authUserId);
     setCopied(true);
     playSound('pop');
     setTimeout(() => setCopied(false), 2000);
@@ -378,7 +399,7 @@ export function Onboarding() {
                     </label>
                     <div className="flex items-center gap-2">
                       <div className="flex-1 px-4 py-3 bg-white/5 border border-white/10 rounded-xl text-white/80 text-sm font-mono truncate text-center">
-                        {generatedId}
+                        {authUserId}
                       </div>
                       <motion.button
                         onClick={handleCopyId}

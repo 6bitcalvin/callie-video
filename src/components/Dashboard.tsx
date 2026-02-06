@@ -27,7 +27,11 @@ import { Friend, colorThemes } from '@/types';
 
 type Tab = 'friends' | 'messages' | 'calls';
 
-export function Dashboard() {
+interface DashboardProps {
+  onLogout: () => void;
+}
+
+export function Dashboard({ onLogout }: DashboardProps) {
   const {
     user,
     friends,
@@ -48,8 +52,6 @@ export function Dashboard() {
     toggleCamera,
     toggleScreenShare,
     currentCallTargets,
-    setUser,
-    setIsOnboarded,
     addFriend,
     copyUserIdToClipboard,
     playSound,
@@ -125,8 +127,7 @@ export function Dashboard() {
   };
 
   const handleLogout = () => {
-    setUser(null);
-    setIsOnboarded(false);
+    onLogout();
   };
 
   // Play sound on incoming call
@@ -382,7 +383,10 @@ export function Dashboard() {
                   </div>
                 </div>
                 {connectionError && (
-                  <p className="text-red-400 text-xs mt-1">{connectionError}</p>
+                  <p className="text-red-400 text-xs mt-1">Error: {connectionError}</p>
+                )}
+                {!isConnected && (
+                  <p className="text-yellow-400 text-xs mt-1">Connecting to Supabase... Please wait</p>
                 )}
                 <p className="text-white/50 text-sm mt-1">
                   {activeTab === 'friends' && `${onlineFriends.length} online, ${offlineFriends.length} offline`}

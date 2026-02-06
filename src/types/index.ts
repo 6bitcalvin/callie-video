@@ -97,9 +97,18 @@ export type Participant = {
   id: string;
   username: string;
   displayName: string;
-  avatarUrl: string;
+  avatarColor: string;
   colorTheme: ColorTheme;
   stream: MediaStream | null;
   isMuted: boolean;
   isCameraOff: boolean;
+};
+
+export type UserProfile = {
+  id: string;
+  username: string;
+  displayName: string;
+  avatarColor: string;
+  colorTheme: ColorTheme;
+  email?: string;
 };

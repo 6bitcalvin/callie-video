@@ -1,6 +1,6 @@
 import { createContext, useContext, useState, useEffect, useCallback, ReactNode, useRef } from 'react';
-import { supabase, testSupabaseConnection } from '@/lib/supabase';
-import { colorThemes, Friend, Message, Reaction, User } from '@/types';
+import { supabase, testRealtimeConnection } from '@/lib/supabase';
+import { colorThemes, Friend, Message, Reaction, User, UserProfile } from '@/types';
 import { v4 as uuidv4 } from 'uuid';
 import { useWebRTC } from '@/hooks/useWebRTC';
 import { stringToColor } from '@/components/ColorAvatar';
@@ -12,9 +12,6 @@ type AppContextType = {
   
   // User state
   user: User | null;
-  setUser: (user: User | null) => void;
-  isOnboarded: boolean;
-  setIsOnboarded: (value: boolean) => void;
   
   // Friends
   friends: Friend[];
@@ -64,35 +61,32 @@ type AppContextType = {
 
 const AppContext = createContext<AppContextType | null>(null);
 
-// Storage keys
-const STORAGE_KEYS = {
-  USER: 'callie_user',
-  ONBOARDED: 'callie_onboarded',
-  FRIENDS: 'callie_friends',
-};
+// Storage key for friends
+const FRIENDS_STORAGE_KEY = 'callie_friends';
 
-export function AppProvider({ children }: { children: ReactNode }) {
+interface AppProviderProps {
+  children: ReactNode;
+  userProfile: UserProfile;
+}
+
+export function AppProvider({ children, userProfile }: AppProviderProps) {
   // Connection state
   const [isConnected, setIsConnected] = useState(false);
   const [connectionError, setConnectionError] = useState<string | null>(null);
 
-  // Load initial state from localStorage
-  const [user, setUserState] = useState<User | null>(() => {
-    try {
-      const stored = localStorage.getItem(STORAGE_KEYS.USER);
-      return stored ? JSON.parse(stored) : null;
-    } catch {
-      return null;
-    }
-  });
-  
-  const [isOnboarded, setIsOnboardedState] = useState(() => {
-    return localStorage.getItem(STORAGE_KEYS.ONBOARDED) === 'true';
-  });
+  // User based on profile
+  const user: User = {
+    id: userProfile.id,
+    username: userProfile.username,
+    displayName: userProfile.displayName,
+    avatarColor: userProfile.avatarColor,
+    colorTheme: userProfile.colorTheme,
+    status: 'online',
+  };
 
   const [friends, setFriends] = useState<Friend[]>(() => {
     try {
-      const stored = localStorage.getItem(STORAGE_KEYS.FRIENDS);
+      const stored = localStorage.getItem(`${FRIENDS_STORAGE_KEY}_${userProfile.id}`);
       if (stored) {
         const parsed = JSON.parse(stored);
         return parsed.map((f: Friend) => ({
@@ -120,46 +114,43 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   // WebRTC hook
   const webRTC = useWebRTC(
-    user?.id || '',
-    user ? {
+    user.id,
+    {
       displayName: user.displayName,
       avatarColor: user.avatarColor,
       colorTheme: user.colorTheme.gradient,
-    } : undefined
+    }
   );
 
   // Test connection on mount
   useEffect(() => {
-    testSupabaseConnection().then((result) => {
-      setIsConnected(result.connected);
-      if (!result.connected) {
-        setConnectionError(result.error || 'Failed to connect to server');
-        console.error('Supabase connection failed:', result.error);
-      } else {
-        console.log('Supabase connected successfully');
+    const initializeConnection = async () => {
+      console.log('Testing Supabase realtime connection...');
+      
+      try {
+        const result = await testRealtimeConnection();
+        console.log('Connection test result:', result);
+        
+        setIsConnected(result.connected);
+        if (!result.connected) {
+          setConnectionError(result.error || 'Failed to connect to server');
+        } else {
+          setConnectionError(null);
+        }
+      } catch (error) {
+        console.error('Connection test error:', error);
+        setConnectionError(`Connection failed: ${error}`);
+        setIsConnected(false);
       }
-    });
-  }, []);
-
-  // Persist user to localStorage
-  const setUser = useCallback((newUser: User | null) => {
-    setUserState(newUser);
-    if (newUser) {
-      localStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(newUser));
-    } else {
-      localStorage.removeItem(STORAGE_KEYS.USER);
-    }
-  }, []);
-
-  const setIsOnboarded = useCallback((value: boolean) => {
-    setIsOnboardedState(value);
-    localStorage.setItem(STORAGE_KEYS.ONBOARDED, String(value));
+    };
+    
+    initializeConnection();
   }, []);
 
   // Persist friends to localStorage
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEYS.FRIENDS, JSON.stringify(friends));
-  }, [friends]);
+    localStorage.setItem(`${FRIENDS_STORAGE_KEY}_${userProfile.id}`, JSON.stringify(friends));
+  }, [friends, userProfile.id]);
 
   // Sound effects
   const playSound = useCallback((sound: 'pop' | 'ring' | 'hangup' | 'message') => {
@@ -214,18 +205,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   // Copy user ID to clipboard
   const copyUserIdToClipboard = useCallback(() => {
-    if (user) {
-      navigator.clipboard.writeText(user.id);
-      playSound('pop');
-    }
-  }, [user, playSound]);
+    navigator.clipboard.writeText(user.id);
+    playSound('pop');
+  }, [user.id, playSound]);
 
   // Add friend by ID
   const addFriend = useCallback(async (friendId: string): Promise<{ success: boolean; error?: string }> => {
-    if (!user) {
-      return { success: false, error: 'You must be logged in to add friends' };
-    }
-    
     if (!friendId || friendId.trim() === '') {
       return { success: false, error: 'Please enter a valid user ID' };
     }
@@ -264,7 +249,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     playSound('pop');
     
     return { success: true };
-  }, [user, friends, onlineUsers, playSound]);
+  }, [user.id, friends, onlineUsers, playSound]);
 
   // Remove friend
   const removeFriend = useCallback(async (friendId: string) => {
@@ -276,7 +261,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   // Send message
   const sendMessage = useCallback(async (content: string, type: Message['type'], fileUrl?: string) => {
-    if (!user || !activeChat) return;
+    if (!activeChat) return;
 
     const newMessage: Message = {
       id: uuidv4(),
@@ -307,12 +292,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
         console.error('Failed to send message:', error);
       }
     }
-  }, [user, activeChat, playSound]);
+  }, [user.id, activeChat, playSound]);
 
   // Add reaction
   const addReaction = useCallback((emoji: string) => {
-    if (!user) return;
-
     const newReaction: Reaction = {
       id: uuidv4(),
       emoji,
@@ -327,7 +310,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setTimeout(() => {
       setReactions(prev => prev.filter(r => r.id !== newReaction.id));
     }, 3000);
-  }, [user, playSound]);
+  }, [user.id, playSound]);
 
   // Handle typing indicator
   useEffect(() => {
@@ -336,7 +319,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     chatChannelRef.current.send({
       type: 'broadcast',
       event: 'typing',
-      payload: { userId: user?.id },
+      payload: { userId: user.id },
     });
 
     // Clear typing after 3 seconds of no activity
@@ -346,11 +329,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
     typingTimeoutRef.current = setTimeout(() => {
       setIsTyping(false);
     }, 3000);
-  }, [isTyping, user]);
+  }, [isTyping, user.id]);
 
-  // Setup presence channel when user is set
+  // Setup presence channel when connected
   useEffect(() => {
-    if (!user) return;
+    if (!isConnected) return;
+
+    console.log('Setting up presence channel for user:', user.id);
 
     const channel = supabase.channel('presence:global', {
       config: { presence: { key: user.id } }
@@ -364,6 +349,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         online.add(key);
       });
       
+      console.log('Presence sync - online users:', Array.from(online));
       setOnlineUsers(online);
       
       // Update friends' online status
@@ -375,6 +361,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     });
 
     channel.on('presence', { event: 'join' }, ({ key }) => {
+      console.log('User joined:', key);
       setOnlineUsers(prev => new Set(prev).add(key));
       setFriends(prev => prev.map(friend => 
         friend.id === key ? { ...friend, status: 'online', lastSeen: new Date() } : friend
@@ -382,6 +369,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     });
 
     channel.on('presence', { event: 'leave' }, ({ key }) => {
+      console.log('User left:', key);
       setOnlineUsers(prev => {
         const next = new Set(prev);
         next.delete(key);
@@ -393,28 +381,37 @@ export function AppProvider({ children }: { children: ReactNode }) {
     });
 
     channel.subscribe(async (status) => {
+      console.log('Presence channel status:', status);
       if (status === 'SUBSCRIBED') {
-        await channel.track({
-          online_at: new Date().toISOString(),
-          user_id: user.id,
-        });
-        setIsConnected(true);
+        try {
+          await channel.track({
+            online_at: new Date().toISOString(),
+            user_id: user.id,
+          });
+          console.log('Presence tracking started');
+        } catch (err) {
+          console.error('Failed to track presence:', err);
+        }
       } else if (status === 'CHANNEL_ERROR') {
-        setIsConnected(false);
+        console.error('Presence channel error');
         setConnectionError('Failed to connect to presence channel');
+      } else if (status === 'TIMED_OUT') {
+        console.error('Presence channel timed out');
+        setConnectionError('Connection timed out');
       }
     });
 
     presenceChannelRef.current = channel;
 
     return () => {
+      console.log('Cleaning up presence channel');
       supabase.removeChannel(channel);
     };
-  }, [user]);
+  }, [user.id, isConnected]);
 
   // Setup chat channel when active chat changes
   useEffect(() => {
-    if (!user || !activeChat) {
+    if (!activeChat) {
       if (chatChannelRef.current) {
         supabase.removeChannel(chatChannelRef.current);
         chatChannelRef.current = null;
@@ -458,7 +455,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [user, activeChat, playSound]);
+  }, [user.id, activeChat, playSound]);
 
   return (
     <AppContext.Provider
@@ -469,9 +466,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
         
         // User
         user,
-        setUser,
-        isOnboarded,
-        setIsOnboarded,
         
         // Friends
         friends,
